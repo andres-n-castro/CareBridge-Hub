@@ -1,0 +1,26 @@
+{
+  "risk_areas": [
+    {
+      "name": "Socioeconomic",
+      "level": "high"
+    },
+    {
+      "name": "Limited_English",
+      "level": "high"
+    },
+    {
+      "name": "Housing_Stability",
+      "level": "high"
+    },
+    {
+      "name": "Transportation_Access",
+      "level": "low"
+    }
+  ],
+  "follow_up_questions": [
+    "Do you have concerns about affording medications or follow-up care?",
+    "Would you benefit from interpreter services during your visit?",
+    "Is your home environment suitable for isolation if needed?",
+    "Do you have access to clear and understandable health information in your preferred language?"
+  ]
+}
