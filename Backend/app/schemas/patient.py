@@ -34,13 +34,25 @@ class CurrentAssessment(BaseModel):
     
     pain_level_0_10: Optional[int] = Field(default=None, ge=0, le=10)
     additional_info: Optional[str] = None
+    
+class Nurse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
 
 class PatientCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
+    
+    nurse: Nurse
     patient_info: PatientInfo
     background: Background
     current_assessment: CurrentAssessment
 
-class PatientOut(PatientCreate):
+class PatientOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    
     id: int
+    nurse: Nurse
+    patient_info: PatientInfo
+    background: Background
+    current_assessment: CurrentAssessment
