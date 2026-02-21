@@ -13,6 +13,7 @@ class Patient(Base):
     patient_info = Column(JSONB, nullable=False)
     background = Column(JSONB, nullable=False)
     current_assessment = Column(JSONB, nullable=False)
+    vital_signs = Column(JSONB, nullable=False, server_default="{}")
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

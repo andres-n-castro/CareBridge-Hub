@@ -6,7 +6,7 @@ load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-audio_path = "audio.m4a"
+audio_path = "audio/audio.m4a"
 
 with open(audio_path, "rb") as f:
     transcript = client.audio.transcriptions.create(
@@ -16,7 +16,7 @@ with open(audio_path, "rb") as f:
         language="en"
     )
 
-with open("transcript.txt", "w", encoding="utf-8") as f:
+with open("transcripts/transcript.txt", "w", encoding="utf-8") as f:
     f.write(transcript)
 
 print("Transcript saved to transcript.txt")

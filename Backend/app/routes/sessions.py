@@ -107,7 +107,7 @@ async def get_transcript(session_id: int, db: AsyncSession = Depends(get_db)):
 async def get_form(session_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         text("""
-            SELECT id, nurse, patient_info, background, current_assessment
+            SELECT id, nurse, patient_info, background, current_assessment, vital_signs
             FROM patients
             WHERE id = :id
         """),
@@ -122,6 +122,7 @@ async def get_form(session_id: int, db: AsyncSession = Depends(get_db)):
         patient_info=row["patient_info"],
         background=row["background"],
         current_assessment=row["current_assessment"],
+        vital_signs=row["vital_signs"],
     )
 
 
@@ -138,9 +139,10 @@ async def update_form(
                 patient_info       = CAST(:patient_info AS JSONB),
                 background         = CAST(:background AS JSONB),
                 current_assessment = CAST(:current_assessment AS JSONB),
+                vital_signs        = CAST(:vital_signs AS JSONB),
                 updated_at         = now()
             WHERE id = :id
-            RETURNING id, nurse, patient_info, background, current_assessment
+            RETURNING id, nurse, patient_info, background, current_assessment, vital_signs
         """),
         {
             "id": session_id,
@@ -148,6 +150,7 @@ async def update_form(
             "patient_info": json.dumps(payload.patient_info.model_dump()),
             "background": json.dumps(payload.background.model_dump()),
             "current_assessment": json.dumps(payload.current_assessment.model_dump()),
+            "vital_signs": json.dumps(payload.vital_signs.model_dump()),
         },
     )
     row = result.mappings().one_or_none()
@@ -160,6 +163,7 @@ async def update_form(
         patient_info=row["patient_info"],
         background=row["background"],
         current_assessment=row["current_assessment"],
+        vital_signs=row["vital_signs"],
     )
 
 
