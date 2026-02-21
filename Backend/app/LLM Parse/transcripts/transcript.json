@@ -4,7 +4,7 @@
     "name": "George Murillo",
     "dob": "2001-09-03",
     "room": "207",
-    "allergies": "No allergies",
+    "allergies": null,
     "code_status": null,
     "reason_for_admission": "big headache",
     "geolocation": "34771"
@@ -19,7 +19,7 @@
   },
   "current_assessment": {
     "pain_level_0_10": 7,
-    "additional_info": "Headache with pain level 7; initial treatment Tylenol prescribed, possible morphine next shift if needed"
+    "additional_info": "Prescribed Tylenol; next shift may prescribe morphine if no relief."
   },
   "nurse_on_shift": "Jasmine"
 }
