@@ -4,6 +4,10 @@
     "patient_information": {
       "type": "object",
       "properties": {
+        "patient_id": {
+        "type": "integer",
+        "minimum": 0
+      },
         "name": { "type": "string" },
         "dob": {
           "type": "string",

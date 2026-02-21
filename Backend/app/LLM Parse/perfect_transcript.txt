@@ -1,5 +1,5 @@
 Example Nurse–Patient Conversation
-Nurse: Good morning, Mr. Johnson. Can you confirm your full name and date of birth for me?
+Nurse: Good morning, Mr. Johnson. Patient ID: 123. My Name is Jess Can you confirm your full name and date of birth for me?
 Patient: John Johnson, March 3rd, 1954.
 Nurse: And you’re in room 412. Do you have any medication allergies?
 Patient: Yeah, I’m allergic to penicillin. I get a rash.

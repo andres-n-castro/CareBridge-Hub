@@ -9,7 +9,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 with open("prompt.txt", "r", encoding="utf-8") as f:
     prompt = f.read()
 
-with open("newform_transcript.txt", "r", encoding="utf-8") as f:
+with open("perfect_transcript.txt", "r", encoding="utf-8") as f:
     transcript = f.read()
 
 with open("schema.json", "r", encoding="utf-8") as f:
