@@ -9,7 +9,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 with open("prompt.txt", "r", encoding="utf-8") as f:
     prompt = f.read()
 
-with open("perfect_transcript.txt", "r", encoding="utf-8") as f:
+with open("transcript.txt", "r", encoding="utf-8") as f:
     transcript = f.read()
 
 with open("schema.json", "r", encoding="utf-8") as f:
@@ -33,4 +33,8 @@ response = client.responses.create(
 
 # output_text is a convenience string containing the structured JSON
 result = json.loads(response.output_text)
-print(json.dumps(result, indent=2))
+
+with open("transcript.json", "w", encoding="utf-8") as f:
+    json.dump(result, f, indent=2)
+
+print("Structured JSON saved to transcript.json")
