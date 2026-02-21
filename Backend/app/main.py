@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.routes import router as patient_router
 
 app = FastAPI(title="CareBridge API")
+app.include_router(patient_router)
 
 app.add_middleware(
     CORSMiddleware,
