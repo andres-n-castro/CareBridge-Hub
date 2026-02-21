@@ -1,15 +1,17 @@
 from __future__ import annotations
 import json
+from pathlib import Path
 
 from langchain_openai import ChatOpenAI
 
-from app.schemas.patient import PatientCreate
 from .prompts import REGENERATE_SYSTEM_PROMPT
 from .state import GraphState
 
+with open(Path(__file__).parent.parent / "LLM Parse" / "schema.json", encoding="utf-8") as f:
+    _SCHEMA = json.load(f)
 
 _llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-_corrector = _llm.with_structured_output(PatientCreate)
+_corrector = _llm.with_structured_output(schema=_SCHEMA)
 
 
 def regenerate_node(state: GraphState) -> dict:
@@ -21,9 +23,9 @@ def regenerate_node(state: GraphState) -> dict:
         f"VERIFICATION ERRORS:\n{errors_block}"
     )
 
-    corrected: PatientCreate = _corrector.invoke([
+    corrected: dict = _corrector.invoke([
         {"role": "system", "content": REGENERATE_SYSTEM_PROMPT},
         {"role": "user", "content": user_message},
     ])
 
-    return {"extracted_form": corrected.model_dump()}
+    return {"extracted_form": corrected}

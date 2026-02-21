@@ -1,10 +1,12 @@
 import json
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.db import get_db
 from app.schemas.patient import PatientCreate, PatientOut
+from app.stt.transcriber import transcribe_audio
+from app.RAG import compiled_graph
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -71,10 +73,39 @@ async def start_recording(session_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{session_id}/stop")
-async def stop_recording(session_id: int, db: AsyncSession = Depends(get_db)):
+async def stop_recording(
+    session_id: int,
+    audio_file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
     await _fetch_patient(session_id, db)
-    _session_state[session_id] = {"status": "stopped", "progress": 50}
-    return {"id": session_id, "status": "stopped", "progress": 50}
+    _session_state[session_id] = {"status": "processing", "progress": 25}
+
+    audio_bytes = await audio_file.read()
+
+    try:
+        transcript = transcribe_audio(audio_bytes, filename=audio_file.filename or "audio.m4a")
+    except Exception as e:
+        _session_state[session_id] = {"status": "error", "progress": 0}
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+
+    _session_state[session_id] = {"status": "processing", "progress": 75}
+
+    try:
+        result = await compiled_graph.ainvoke({"transcript": transcript})
+    except Exception as e:
+        _session_state[session_id] = {"status": "error", "progress": 0}
+        raise HTTPException(status_code=500, detail=f"RAG pipeline failed: {e}")
+
+    _session_state[session_id] = {"status": "complete", "progress": 100}
+
+    return {
+        "id": session_id,
+        "status": "complete",
+        "progress": 100,
+        "transcript": transcript,
+        "form": result["extracted_form"],
+    }
 
 
 @router.post("/{session_id}/process")
