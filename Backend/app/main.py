@@ -21,6 +21,9 @@ app.add_middleware(
 )
 
 
+app.include_router(intake.router)
+
+
 @app.get("/")
 def root():
     return {"message": "CareBridge API is running"}
