@@ -42,17 +42,19 @@ class Nurse(BaseModel):
 
 class PatientCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    
+
     nurse: Nurse
     patient_info: PatientInfo
     background: Background
     current_assessment: CurrentAssessment
+    vital_signs: VitalSigns = Field(default_factory=VitalSigns)
 
 class PatientOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    
+
     id: int
     nurse: Nurse
     patient_info: PatientInfo
     background: Background
     current_assessment: CurrentAssessment
+    vital_signs: VitalSigns
