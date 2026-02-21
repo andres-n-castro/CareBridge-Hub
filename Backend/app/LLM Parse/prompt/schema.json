@@ -1,0 +1,87 @@
+{
+  "type": "object",
+  "properties": {
+    "patient_information": {
+      "type": "object",
+      "properties": {
+        "patient_id": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Unique numeric patient identifier. Null if not stated."
+        },
+        "name": { "type": "string" },
+        "dob": {
+          "type": "string",
+          "format": "date",
+          "description": "Date of birth in YYYY-MM-DD format"
+        },
+        "room": { "type": ["string", "null"] },
+        "allergies": { "type": ["string", "null"] },
+        "code_status": { "type": ["string", "null"] },
+        "reason_for_admission": { "type": "string" },
+
+        "geolocation": {
+          "type": ["string", "null"],
+          "description": "Only if explicitly stated; otherwise null."
+        }
+      },
+      "required": [
+        "patient_id",
+        "name",
+        "dob",
+        "room",
+        "allergies",
+        "code_status",
+        "reason_for_admission",
+        "geolocation"
+      ],
+      "additionalProperties": false
+    },
+
+    "background": {
+      "type": ["object", "null"],
+      "properties": {
+        "relevant_pmh": { "type": ["string", "null"] },
+        "hospital_day": { "type": ["integer", "null"], "minimum": 0 },
+        "post_op_day": { "type": ["integer", "null"], "minimum": 0 },
+        "procedures": { "type": ["string", "null"] }
+      },
+      "required": ["relevant_pmh", "hospital_day", "post_op_day", "procedures"],
+      "additionalProperties": false
+    },
+
+    "vital_signs": {
+      "type": ["object", "null"],
+      "properties": {
+        "temperature_f": { "type": ["number", "null"], "minimum": 80, "maximum": 115 },
+        "heart_rate": { "type": ["integer", "null"], "minimum": 0, "maximum": 250 },
+        "respiratory_rate": { "type": ["integer", "null"], "minimum": 0, "maximum": 80 },
+        "bp_systolic": { "type": ["integer", "null"], "minimum": 0, "maximum": 300 },
+        "bp_diastolic": { "type": ["integer", "null"], "minimum": 0, "maximum": 200 }
+      },
+      "required": ["temperature_f", "heart_rate", "respiratory_rate", "bp_systolic", "bp_diastolic"],
+      "additionalProperties": false
+    },
+
+    "current_assessment": {
+      "type": ["object", "null"],
+      "properties": {
+        "pain_level_0_10": { "type": ["integer", "null"], "minimum": 0, "maximum": 10 },
+        "additional_info": { "type": ["string", "null"] }
+      },
+      "required": ["pain_level_0_10", "additional_info"],
+      "additionalProperties": false
+    },
+
+    "nurse_on_shift": { "type": ["string", "null"] }
+  },
+
+  "required": [
+    "patient_information",
+    "background",
+    "vital_signs",
+    "current_assessment",
+    "nurse_on_shift"
+  ],
+  "additionalProperties": false
+}
