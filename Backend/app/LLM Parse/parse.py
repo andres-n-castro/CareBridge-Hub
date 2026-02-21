@@ -6,13 +6,13 @@ from dotenv import load_dotenv
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-with open("prompt.txt", "r", encoding="utf-8") as f:
+with open("prompt/prompt.txt", "r", encoding="utf-8") as f:
     prompt = f.read()
 
-with open("transcript.txt", "r", encoding="utf-8") as f:
+with open("transcripts/transcript.txt", "r", encoding="utf-8") as f:
     transcript = f.read()
 
-with open("schema.json", "r", encoding="utf-8") as f:
+with open("prompt/schema.json", "r", encoding="utf-8") as f:
     schema = json.load(f)
 
 response = client.responses.create(
@@ -34,7 +34,7 @@ response = client.responses.create(
 # output_text is a convenience string containing the structured JSON
 result = json.loads(response.output_text)
 
-with open("transcript.json", "w", encoding="utf-8") as f:
+with open("transcripts/transcript.json", "w", encoding="utf-8") as f:
     json.dump(result, f, indent=2)
 
 print("Structured JSON saved to transcript.json")
