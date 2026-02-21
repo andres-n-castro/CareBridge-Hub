@@ -1,0 +1,66 @@
+{
+  "type": "object",
+  "required": [
+    "name",
+    "dob",
+    "reason_for_admission",
+    "summary_next_shift"
+  ],
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "dob": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of birth in YYYY-MM-DD format"
+    },
+    "room": {
+      "type": "string"
+    },
+    "allergies": {
+      "type": "string"
+    },
+    "reason_for_admission": {
+      "type": "string"
+    },
+
+    "background": {
+      "type": "object",
+      "properties": {
+        "relevant_pmh": {
+          "type": "string"
+        },
+        "hospital_day": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "post_op_day": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      }
+    },
+
+    "current_assessment": {
+      "type": "object",
+      "properties": {
+        "bp_systolic": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bp_diastolic": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "temperature_f": {
+          "type": "number"
+        }
+      }
+    },
+
+    "summary_next_shift": {
+      "type": "string"
+    }
+  }
+}

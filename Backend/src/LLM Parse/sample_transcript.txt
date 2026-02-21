@@ -1,0 +1,15 @@
+Example Nurse–Patient Conversation
+Nurse: Good morning, Mr. Johnson. Can you confirm your full name and date of birth for me?
+Patient: John Johnson, March 3rd, 1954.
+Nurse: And you’re in room 412. Do you have any medication allergies?
+Patient: Yeah, I’m allergic to penicillin. I get a rash.
+Nurse: Got it. You’re here because of pneumonia, correct?
+Patient: Yeah, they said I have an infection in my right lung. I’ve been short of breath for a few days.
+Nurse: Okay. Today is hospital day 2 for you. Before this admission, do you have any major medical history like diabetes, heart disease, or lung problems?
+Patient: I’ve got COPD and high blood pressure. Also type 2 diabetes.
+Nurse: Thank you. Let me check your vitals.
+Blood pressure is 128 over 74. Temperature is 99.1. Slightly elevated but no fever.
+Patient: I still feel a little warm, but better than yesterday.
+Nurse: That’s good. You’re still on antibiotics and oxygen. I’ll make sure the next nurse keeps monitoring your breathing and temperature.
+Patient: Okay.
+Nurse: We’ll keep an eye on your oxygen levels overnight and continue antibiotics as scheduled.
