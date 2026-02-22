@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import date
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -13,6 +14,99 @@ from app.routes.svi import SVI_AVAILABLE, extract_zip_from_text, zip_to_county
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+
+def _llm_form_to_db_parts(extracted_form: dict) -> dict:
+    """Convert the LLM-extracted form (schema.json shape) to DB JSONB column values."""
+    pi = extracted_form.get("patient_information") or {}
+    bg = extracted_form.get("background") or {}
+    vs = extracted_form.get("vital_signs") or {}
+    ca = extracted_form.get("current_assessment") or {}
+    meds_raw = extracted_form.get("medications") or []
+
+    # DOB ISO date → integer age
+    dob_str = pi.get("dob") or ""
+    age = 0
+    if dob_str:
+        try:
+            birth_year = date.fromisoformat(dob_str).year
+            age = date.today().year - birth_year
+        except Exception:
+            pass
+
+    # Room: string → int
+    room_str = pi.get("room") or ""
+    try:
+        room_num = int(room_str)
+    except (ValueError, TypeError):
+        room_num = 0
+
+    # Temperature °F → °C
+    temp_f = vs.get("temperature_f")
+    temp_c = round((temp_f - 32) * 5 / 9, 1) if temp_f is not None else None
+
+    # PMH: string or list → list or null
+    pmh = bg.get("relevant_pmh")
+    if isinstance(pmh, str) and pmh:
+        pmh_list = [pmh]
+    elif isinstance(pmh, list) and pmh:
+        pmh_list = pmh
+    else:
+        pmh_list = None
+
+    # Procedures: string or list → list or null
+    proc = bg.get("procedures")
+    if isinstance(proc, str) and proc:
+        proc_list = [proc]
+    elif isinstance(proc, list) and proc:
+        proc_list = proc
+    else:
+        proc_list = None
+
+    # Medications
+    db_meds = []
+    if isinstance(meds_raw, list):
+        for i, med in enumerate(meds_raw):
+            if isinstance(med, dict) and med.get("name"):
+                db_meds.append({
+                    "id": f"ai-med-{i}",
+                    "name": med.get("name", ""),
+                    "dose": med.get("dose") or "",
+                    "frequency": med.get("frequency") or "",
+                    "source": "AI",
+                })
+
+    nurse_name = extracted_form.get("nurse_on_shift") or "Unknown"
+
+    return {
+        "nurse": {"name": nurse_name},
+        "patient_info": {
+            "name": pi.get("name") or "Unknown",
+            "DOB": age,
+            "room_num": room_num,
+            "allergies": pi.get("allergies") or "None",
+            "code_status": pi.get("code_status") or "Full",
+            "reason_for_admission": pi.get("reason_for_admission") or None,
+            "geo_location": pi.get("geolocation") or None,
+        },
+        "background": {
+            "past_medical_history": pmh_list,
+            "hospital_day": bg.get("hospital_day"),
+            "procedures": proc_list,
+        },
+        "vital_signs": {
+            "temp_c": temp_c,
+            "hr_bpm": vs.get("heart_rate"),
+            "rr_bpm": vs.get("respiratory_rate"),
+            "bp_sys": vs.get("bp_systolic"),
+            "bp_dia": vs.get("bp_diastolic"),
+        },
+        "current_assessment": {
+            "pain_level_0_10": ca.get("pain_level_0_10"),
+            "additional_info": ca.get("additional_info") or None,
+        },
+        "medications": db_meds,
+    }
 
 
 @router.post("", status_code=201)
@@ -160,8 +254,38 @@ async def stop_recording(
     )
     await db.commit()
 
-    # Resolve ZIP code from transcript → county/state and write to geo_location.
+    # Persist the extracted form fields to DB so GET /form returns them immediately.
     extracted_form = result["extracted_form"]
+    try:
+        db_parts = _llm_form_to_db_parts(extracted_form)
+        await db.execute(
+            text("""
+                UPDATE patients
+                SET nurse              = CAST(:nurse AS JSONB),
+                    patient_info       = CAST(:patient_info AS JSONB),
+                    background         = CAST(:background AS JSONB),
+                    current_assessment = CAST(:current_assessment AS JSONB),
+                    vital_signs        = CAST(:vital_signs AS JSONB),
+                    medications        = CAST(:medications AS JSONB),
+                    updated_at         = now()
+                WHERE id = :id
+            """),
+            {
+                "id": session_id,
+                "nurse": json.dumps(db_parts["nurse"]),
+                "patient_info": json.dumps(db_parts["patient_info"]),
+                "background": json.dumps(db_parts["background"]),
+                "current_assessment": json.dumps(db_parts["current_assessment"]),
+                "vital_signs": json.dumps(db_parts["vital_signs"]),
+                "medications": json.dumps(db_parts["medications"]),
+            },
+        )
+        await db.commit()
+        logger.info("[session %d] stop_recording: extracted form saved to DB", session_id)
+    except Exception as e:
+        logger.warning("[session %d] stop_recording: failed to save extracted form to DB: %s", session_id, e)
+
+    # Resolve ZIP code from transcript → county/state and write to geo_location.
     geo_location: str | None = None
     if SVI_AVAILABLE and extract_zip_from_text and zip_to_county:
         try:

@@ -10,5 +10,6 @@ DOB must be formatted as YYYY-MM-DD.
 Blood pressure must be split into systolic and diastolic integers.
 Temperature must be returned as a numeric value in Fahrenheit.
 Do not hallucinate information not explicitly stated in the transcript.
-Keep summary_next_shift concise and clinically appropriate.
 Only extract what is stated.
+For additional_info: write a concise clinical summary of the current patient status, notable observations, and any monitoring or follow-up items mentioned.
+For medications: extract every medication mentioned, including name, dose, and frequency. If dose or frequency is not stated for a medication, return null for that field.
