@@ -426,8 +426,18 @@ export function rawExtractedFormToIntakeForm(rawForm: Record<string, unknown>): 
     bpDiastolic: ai(vs.bp_diastolic != null ? String(vs.bp_diastolic) : '', true),
     painLevel: ai(ca.pain_level_0_10 != null ? String(ca.pain_level_0_10) : '', true),
     additionalInfo: ai(ca.additional_info ?? '', false),
-    // Medications are not extracted by the LLM; nurses add them manually.
-    medications: makeField([], false),
+    medications: ai(
+      ((rawForm.medications as Array<{ name: string; dose: string | null; frequency: string | null }> | null) ?? [])
+        .filter((m) => m && m.name)
+        .map((m, i) => ({
+          id: `ai-med-${i}`,
+          name: m.name ?? '',
+          dose: m.dose ?? '',
+          frequency: m.frequency ?? '',
+          source: 'AI' as const,
+        })),
+      false,
+    ),
     nurseName: ai(nurseOnShift, true),
   };
 }

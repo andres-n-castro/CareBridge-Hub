@@ -73,7 +73,22 @@
       "additionalProperties": false
     },
 
-    "nurse_on_shift": { "type": ["string", "null"] }
+    "nurse_on_shift": { "type": ["string", "null"] },
+
+    "medications": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Medication name" },
+          "dose": { "type": ["string", "null"], "description": "Dosage, e.g. 500mg or 10mg/kg" },
+          "frequency": { "type": ["string", "null"], "description": "Frequency, e.g. twice daily, BID, PRN" }
+        },
+        "required": ["name", "dose", "frequency"],
+        "additionalProperties": false
+      },
+      "description": "All active medications mentioned in the transcript"
+    }
   },
 
   "required": [
@@ -81,7 +96,8 @@
     "background",
     "vital_signs",
     "current_assessment",
-    "nurse_on_shift"
+    "nurse_on_shift",
+    "medications"
   ],
   "additionalProperties": false
 }
