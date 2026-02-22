@@ -1,4 +1,5 @@
 import os
+import ssl
 from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -19,10 +20,14 @@ def _make_async_url(url: str) -> str:
               if k not in ("sslmode", "channel_binding")}
     return urlunparse(parsed._replace(query=urlencode(params)))
 
+_ssl_ctx = ssl.create_default_context()
+_ssl_ctx.check_hostname = False
+_ssl_ctx.verify_mode = ssl.CERT_NONE
+
 engine = create_async_engine(
     _make_async_url(DATABASE_URL),
     echo=False,
-    connect_args={"ssl": True, "statement_cache_size": 0},
+    connect_args={"ssl": _ssl_ctx, "statement_cache_size": 0},
 )
 
 AsyncSessionLocal = sessionmaker(
