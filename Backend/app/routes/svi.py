@@ -137,19 +137,12 @@ async def get_svi(session_id: int, db: AsyncSession = Depends(get_db)):
         logger.info("SVI lookup not available — returning empty response")
         return {"metrics": [], "questions": [], "error": "svi_unavailable"}
 
-    from app.routes.sessions import _session_state  # noqa: PLC0415
-
-    # Try in-memory state first (active session), then fall back to DB.
-    transcript: str | None = _session_state.get(session_id, {}).get("transcript")
-
-    if not transcript:
-        result = await db.execute(
-            text("SELECT transcript FROM patients WHERE id = :id"),
-            {"id": session_id},
-        )
-        row = result.mappings().one_or_none()
-        if row:
-            transcript = row["transcript"]
+    result = await db.execute(
+        text("SELECT transcript FROM patients WHERE id = :id"),
+        {"id": session_id},
+    )
+    row = result.mappings().one_or_none()
+    transcript: str | None = row["transcript"] if row else None
 
     if not transcript:
         return {"metrics": [], "questions": [], "error": "transcript_not_ready"}

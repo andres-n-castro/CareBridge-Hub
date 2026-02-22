@@ -20,19 +20,19 @@ with open(_LLM_PARSE_DIR / "schema.json", "r", encoding="utf-8") as f:
 
 def generate_form(transcript: str) -> dict:
     """Extract a structured handoff form from a raw transcript."""
-    response = _client.responses.create(
-        model="gpt-4.1-mini",
-        input=[
-            {"role": "developer", "content": _PROMPT},
+    response = _client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": _PROMPT},
             {"role": "user", "content": transcript},
         ],
-        text={
-            "format": {
-                "type": "json_schema",
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
                 "name": "nurse_shift_handoff",
                 "schema": _SCHEMA,
                 "strict": False,
-            }
+            },
         },
     )
-    return json.loads(response.output_text)
+    return json.loads(response.choices[0].message.content)
