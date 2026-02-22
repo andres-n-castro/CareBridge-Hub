@@ -9,12 +9,10 @@ from app.db import get_db
 from app.schemas.patient import PatientCreate, PatientOut
 from app.stt.transcriber import transcribe_audio
 from app.RAG import compiled_graph
+from app.routes.svi import SVI_AVAILABLE, extract_zip_from_text, zip_to_county
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sessions", tags=["sessions"])
-
-# In-memory state for actively-processing sessions (supplements DB persistence).
-_session_state: dict[int, dict] = {}
 
 
 @router.post("", status_code=201)
@@ -25,23 +23,29 @@ async def create_session(db: AsyncSession = Depends(get_db)):
                 nurse, patient_info, background, current_assessment, vital_signs,
                 medications, status, progress
             ) VALUES (
-                '{"name":"Unknown"}'::jsonb,
-                '{"name":"Unknown","DOB":0,"room_num":0,"allergies":"None","code_status":"Full","reason_for_admission":null,"geo_location":null}'::jsonb,
-                '{"past_medical_history":null,"hospital_day":null,"procedures":null}'::jsonb,
-                '{"pain_level_0_10":null,"additional_info":null}'::jsonb,
-                '{"temp_c":null,"hr_bpm":null,"rr_bpm":null,"bp_sys":null,"bp_dia":null}'::jsonb,
-                '[]'::jsonb,
+                CAST(:nurse AS JSONB),
+                CAST(:patient_info AS JSONB),
+                CAST(:background AS JSONB),
+                CAST(:current_assessment AS JSONB),
+                CAST(:vital_signs AS JSONB),
+                CAST(:medications AS JSONB),
                 'pending',
                 0
             )
             RETURNING id
-        """)
+        """),
+        {
+            "nurse": '{"name":"Unknown"}',
+            "patient_info": '{"name":"Unknown","DOB":0,"room_num":0,"allergies":"None","code_status":"Full","reason_for_admission":null,"geo_location":null}',
+            "background": '{"past_medical_history":null,"hospital_day":null,"procedures":null}',
+            "current_assessment": '{"pain_level_0_10":null,"additional_info":null}',
+            "vital_signs": '{"temp_c":null,"hr_bpm":null,"rr_bpm":null,"bp_sys":null,"bp_dia":null}',
+            "medications": '[]',
+        },
     )
     row = result.mappings().one()
     await db.commit()
-    session_id = int(row["id"])
-    _session_state[session_id] = {"status": "pending", "progress": 0}
-    return {"id": session_id}
+    return {"id": int(row["id"])}
 
 
 async def _fetch_patient(session_id: int, db: AsyncSession):
@@ -84,10 +88,8 @@ async def list_sessions(
             "room_num": row["room_num"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
-            # Prefer in-memory state for actively-processing sessions,
-            # fall back to persisted DB value for completed/restarted ones.
-            "status": _session_state.get(int(row["id"]), {}).get("status") or row["status"],
-            "progress": _session_state.get(int(row["id"]), {}).get("progress") or row["progress"],
+            "status": row["status"],
+            "progress": row["progress"],
         }
         for row in rows
     ]
@@ -96,7 +98,6 @@ async def list_sessions(
 @router.post("/{session_id}/start")
 async def start_recording(session_id: int, db: AsyncSession = Depends(get_db)):
     await _fetch_patient(session_id, db)
-    _session_state[session_id] = {"status": "recording", "progress": 0}
     await db.execute(
         text("UPDATE patients SET status = 'recording', progress = 0, updated_at = now() WHERE id = :id"),
         {"id": session_id},
@@ -112,7 +113,6 @@ async def stop_recording(
     db: AsyncSession = Depends(get_db),
 ):
     await _fetch_patient(session_id, db)
-    _session_state[session_id] = {"status": "processing", "progress": 25}
     await db.execute(
         text("UPDATE patients SET status = 'processing', progress = 25, updated_at = now() WHERE id = :id"),
         {"id": session_id},
@@ -126,25 +126,20 @@ async def stop_recording(
     try:
         transcript = await asyncio.to_thread(transcribe_audio, audio_bytes, filename=audio_file.filename or "audio.m4a")
         logger.info("[session %d] stop_recording: transcription complete (%d chars)", session_id, len(transcript))
-        logger.debug("[session %d] transcript: %s", session_id, transcript)
     except Exception as e:
         logger.error("[session %d] stop_recording: transcription failed — %s", session_id, e)
-        _session_state[session_id] = {"status": "error", "progress": 0}
         await db.execute(
             text("UPDATE patients SET status = 'error', progress = 0, updated_at = now() WHERE id = :id"),
             {"id": session_id},
         )
         await db.commit()
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+        raise HTTPException(status_code=500, detail="Transcription failed")
 
-    # Persist transcript immediately so it survives restarts and tab changes.
     await db.execute(
         text("UPDATE patients SET transcript = :transcript, status = 'processing', progress = 75, updated_at = now() WHERE id = :id"),
         {"id": session_id, "transcript": transcript},
     )
     await db.commit()
-
-    _session_state[session_id] = {"status": "processing", "progress": 75, "transcript": transcript}
     logger.info("[session %d] stop_recording: starting RAG pipeline", session_id)
 
     try:
@@ -152,34 +147,60 @@ async def stop_recording(
         logger.info("[session %d] stop_recording: RAG pipeline complete", session_id)
     except Exception as e:
         logger.error("[session %d] stop_recording: RAG pipeline failed — %s", session_id, e)
-        _session_state[session_id] = {"status": "error", "progress": 0}
         await db.execute(
             text("UPDATE patients SET status = 'error', progress = 0, updated_at = now() WHERE id = :id"),
             {"id": session_id},
         )
         await db.commit()
-        raise HTTPException(status_code=500, detail=f"RAG pipeline failed: {e}")
+        raise HTTPException(status_code=500, detail="Processing failed")
 
-    _session_state[session_id] = {"status": "complete", "progress": 100, "transcript": transcript}
     await db.execute(
         text("UPDATE patients SET status = 'complete', progress = 100, updated_at = now() WHERE id = :id"),
         {"id": session_id},
     )
     await db.commit()
 
+    # Resolve ZIP code from transcript → county/state and write to geo_location.
+    extracted_form = result["extracted_form"]
+    geo_location: str | None = None
+    if SVI_AVAILABLE and extract_zip_from_text and zip_to_county:
+        try:
+            zip_code = extract_zip_from_text(transcript)
+            if zip_code:
+                county_info = await asyncio.to_thread(zip_to_county, zip_code)
+                if county_info and county_info.get("county_name") and county_info.get("state_name"):
+                    geo_location = f'{county_info["county_name"]}, {county_info["state_name"]}'
+                    # Inject into extracted_form so the frontend sessionStorage gets it.
+                    pi = extracted_form.get("patient_information")
+                    if isinstance(pi, dict):
+                        pi["geolocation"] = geo_location
+                    # Persist to DB so future GET /form calls also return it.
+                    await db.execute(
+                        text("""
+                            UPDATE patients
+                            SET patient_info = jsonb_set(patient_info, '{geo_location}', :geo::jsonb),
+                                updated_at = now()
+                            WHERE id = :id
+                        """),
+                        {"id": session_id, "geo": json.dumps(geo_location)},
+                    )
+                    await db.commit()
+                    logger.info("[session %d] geo_location set to: %s", session_id, geo_location)
+        except Exception as e:
+            logger.warning("[session %d] geo_location lookup failed: %s", session_id, e)
+
     return {
         "id": session_id,
         "status": "complete",
         "progress": 100,
         "transcript": transcript,
-        "form": result["extracted_form"],
+        "form": extracted_form,
     }
 
 
 @router.post("/{session_id}/process")
 async def process_session(session_id: int, db: AsyncSession = Depends(get_db)):
     await _fetch_patient(session_id, db)
-    _session_state[session_id] = {"status": "ready", "progress": 100}
     await db.execute(
         text("UPDATE patients SET status = 'ready', progress = 100, updated_at = now() WHERE id = :id"),
         {"id": session_id},
@@ -197,23 +218,15 @@ async def get_status(session_id: int, db: AsyncSession = Depends(get_db)):
     row = result.mappings().one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    # In-memory state takes priority (accurate during active processing).
-    mem = _session_state.get(session_id, {})
     return {
         "id": session_id,
-        "status": mem.get("status") or row["status"],
-        "progress": mem.get("progress") or row["progress"],
+        "status": row["status"],
+        "progress": row["progress"],
     }
 
 
 @router.get("/{session_id}/transcript")
 async def get_transcript(session_id: int, db: AsyncSession = Depends(get_db)):
-    # First check in-memory (active session).
-    mem = _session_state.get(session_id, {})
-    if mem.get("transcript"):
-        return {"id": session_id, "transcript": mem["transcript"]}
-
-    # Fall back to DB (persisted transcript).
     result = await db.execute(
         text("SELECT transcript FROM patients WHERE id = :id"),
         {"id": session_id},
@@ -296,11 +309,6 @@ async def update_form(
 @router.post("/{session_id}/finalize")
 async def finalize_session(session_id: int, db: AsyncSession = Depends(get_db)):
     await _fetch_patient(session_id, db)
-    _session_state[session_id] = {
-        **_session_state.get(session_id, {}),
-        "status": "final",
-        "progress": 100,
-    }
     await db.execute(
         text("UPDATE patients SET status = 'final', progress = 100, updated_at = now() WHERE id = :id"),
         {"id": session_id},

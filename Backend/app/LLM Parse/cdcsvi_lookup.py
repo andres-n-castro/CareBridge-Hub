@@ -5,10 +5,8 @@ import pandas as pd
 
 
 
-SVI_PATH = "cdc_data/svi_interactive_map.csv"
+SVI_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cdc_data", "svi_interactive_map.csv")
 TRANSCRIPT_PATH = "transcripts/transcript.txt"
-
-
 
 if not os.path.exists(SVI_PATH):
     raise FileNotFoundError(f"SVI file not found at: {SVI_PATH}")
@@ -129,13 +127,19 @@ def get_info_from_cdcsvi(location: str) -> dict:
     if match.empty:
         return {"error": f"County/State not found in CDC SVI dataset: {county_norm}, {state_norm}"}
 
+    def _safe_int(val) -> int:
+        try:
+            return int(float(val))
+        except (ValueError, TypeError):
+            return 0
+
     row = match.iloc[0]
     return {
-        "F_THEME1": int(row["F_THEME1"]),
-        "F_LIMENG": int(row["F_LIMENG"]),
-        "F_CROWD": int(row["F_CROWD"]),
-        "F_NOVEH": int(row["F_NOVEH"]),
-        "F_GROUPQ": int(row["F_GROUPQ"]),
+        "F_THEME1": _safe_int(row["F_THEME1"]),
+        "F_LIMENG": _safe_int(row["F_LIMENG"]),
+        "F_CROWD": _safe_int(row["F_CROWD"]),
+        "F_NOVEH": _safe_int(row["F_NOVEH"]),
+        "F_GROUPQ": _safe_int(row["F_GROUPQ"]),
     }
 
 if __name__ == "__main__":
