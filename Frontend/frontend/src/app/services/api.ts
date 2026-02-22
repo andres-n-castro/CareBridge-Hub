@@ -198,6 +198,11 @@ export async function finalizeSession(
   return request(`/sessions/${sessionId}/finalize`, { method: 'POST' });
 }
 
+/** Permanently delete a session. */
+export async function deleteSession(sessionId: number): Promise<void> {
+  await fetch(`${BASE_URL}/sessions/${sessionId}`, { method: 'DELETE' });
+}
+
 /** Fetch SVI metrics and follow-up questions for a session. */
 export async function getSVI(sessionId: number): Promise<SVIResponse> {
   return request<SVIResponse>(`/sessions/${sessionId}/svi`);

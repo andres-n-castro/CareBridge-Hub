@@ -92,6 +92,16 @@ export default function SessionListPage() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this session? This cannot be undone.")) return;
+    try {
+      await api.deleteSession(Number(id));
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    } catch {
+      setError("Failed to delete session. Please try again.");
+    }
+  };
+
   const handleNewSession = async () => {
     setCreatingSession(true);
     try {
@@ -224,7 +234,7 @@ export default function SessionListPage() {
           </div>
         ) : (
           <>
-            <SessionsTable sessions={filteredSessions} />
+            <SessionsTable sessions={filteredSessions} onDelete={handleDelete} />
             <PaginationControls />
           </>
         )}

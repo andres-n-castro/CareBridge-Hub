@@ -439,3 +439,10 @@ async def finalize_session(session_id: int, db: AsyncSession = Depends(get_db)):
     )
     await db.commit()
     return {"id": session_id, "status": "final"}
+
+
+@router.delete("/{session_id}", status_code=204)
+async def delete_session(session_id: int, db: AsyncSession = Depends(get_db)):
+    await _fetch_patient(session_id, db)
+    await db.execute(text("DELETE FROM patients WHERE id = :id"), {"id": session_id})
+    await db.commit()

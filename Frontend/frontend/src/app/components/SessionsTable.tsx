@@ -29,9 +29,10 @@ import { useNavigate } from "react-router";
 
 interface SessionsTableProps {
   sessions: Session[];
+  onDelete?: (id: string) => void;
 }
 
-export function SessionsTable({ sessions }: SessionsTableProps) {
+export function SessionsTable({ sessions, onDelete }: SessionsTableProps) {
   const navigate = useNavigate();
 
   if (sessions.length === 0) {
@@ -124,7 +125,10 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
                         <FileDown className="mr-2 h-4 w-4" /> Export
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive focus:text-destructive">
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => onDelete?.(session.id)}
+                      >
                         <Trash className="mr-2 h-4 w-4" /> Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
