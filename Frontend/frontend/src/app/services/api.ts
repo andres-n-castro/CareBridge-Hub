@@ -88,6 +88,9 @@ interface BackendSessionRow {
   updated_at: string;
   status: string;
   progress: number;
+  missing: number;
+  uncertain: number;
+  follow_ups: number;
 }
 
 interface BackendStatus {
@@ -277,9 +280,11 @@ export function backendSessionToHandoffForm(row: BackendSessionRow): HandoffForm
     roomNumber: row.room_num != null ? String(row.room_num) : '—',
     createdAt: row.created_at ?? row.updated_at,
     status: backendStatusToHandoffStatus(row.status),
-    // Per-field attention stats are not available in the list endpoint.
-    // They would require loading each form individually — too expensive for a list.
-    attention: { missing: 0, uncertain: 0, followUps: 0 },
+    attention: {
+      missing: row.missing ?? 0,
+      uncertain: row.uncertain ?? 0,
+      followUps: row.follow_ups ?? 0,
+    },
     lastUpdated: row.updated_at,
   };
 }

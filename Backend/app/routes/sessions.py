@@ -10,10 +10,52 @@ from app.db import get_db
 from app.schemas.patient import PatientCreate, PatientOut
 from app.stt.transcriber import transcribe_audio
 from app.RAG import compiled_graph
-from app.routes.svi import SVI_AVAILABLE, extract_zip_from_text, zip_to_county
+from app.routes.svi import SVI_AVAILABLE, extract_zip_from_text, zip_to_county, get_info_from_cdcsvi
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+
+def _count_missing(pi: dict, bg: dict, vs: dict, ca: dict, nurse: dict) -> int:
+    """Count required fields that are null/empty in the patient record."""
+    missing = 0
+    if not pi.get("name") or pi["name"] == "Unknown": missing += 1
+    if not pi.get("DOB") or pi["DOB"] == 0: missing += 1
+    if not pi.get("room_num") or pi["room_num"] == 0: missing += 1
+    if not pi.get("allergies") or pi["allergies"] == "None": missing += 1
+    if not pi.get("code_status"): missing += 1
+    if not pi.get("reason_for_admission"): missing += 1
+    if not bg.get("past_medical_history"): missing += 1
+    if vs.get("temp_c") is None: missing += 1
+    if vs.get("hr_bpm") is None: missing += 1
+    if vs.get("rr_bpm") is None: missing += 1
+    if vs.get("bp_sys") is None: missing += 1
+    if vs.get("bp_dia") is None: missing += 1
+    if ca.get("pain_level_0_10") is None: missing += 1
+    if not nurse.get("name") or nurse["name"] == "Unknown": missing += 1
+    return missing
+
+
+def _count_follow_ups(pi: dict) -> int:
+    """Count SVI follow-up questions triggered by the patient's geo_location."""
+    if not SVI_AVAILABLE or not get_info_from_cdcsvi:
+        return 0
+    geo = pi.get("geo_location")
+    if not geo:
+        return 0
+    try:
+        flags = get_info_from_cdcsvi(geo)
+        if "error" in flags:
+            return 0
+        count = 0
+        if flags.get("F_NOVEH", 0): count += 1
+        if flags.get("F_LIMENG", 0): count += 1
+        if int(flags.get("F_THEME1", 0)) >= 2: count += 1
+        if flags.get("F_CROWD", 0): count += 1
+        if flags.get("F_GROUPQ", 0): count += 1
+        return count
+    except Exception:
+        return 0
 
 
 def _llm_form_to_db_parts(extracted_form: dict) -> dict:
@@ -167,7 +209,12 @@ async def list_sessions(
                    created_at,
                    updated_at,
                    status,
-                   progress
+                   progress,
+                   patient_info,
+                   background,
+                   vital_signs,
+                   current_assessment,
+                   nurse
             FROM patients
             ORDER BY updated_at DESC
             LIMIT :limit OFFSET :offset
@@ -184,6 +231,15 @@ async def list_sessions(
             "updated_at": row["updated_at"],
             "status": row["status"],
             "progress": row["progress"],
+            "missing": _count_missing(
+                row["patient_info"] or {},
+                row["background"] or {},
+                row["vital_signs"] or {},
+                row["current_assessment"] or {},
+                row["nurse"] or {},
+            ),
+            "uncertain": 0,
+            "follow_ups": _count_follow_ups(row["patient_info"] or {}),
         }
         for row in rows
     ]
