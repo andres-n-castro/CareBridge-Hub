@@ -1,11 +1,15 @@
 import json
-from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.db import get_db
 from app.schemas.patient import PatientCreate, PatientOut
+from app.stt.transcriber import transcribe_audio
+from app.RAG import compiled_graph
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 _session_state: dict[int, dict] = {}
@@ -71,10 +75,47 @@ async def start_recording(session_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{session_id}/stop")
-async def stop_recording(session_id: int, db: AsyncSession = Depends(get_db)):
+async def stop_recording(
+    session_id: int,
+    audio_file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
     await _fetch_patient(session_id, db)
-    _session_state[session_id] = {"status": "stopped", "progress": 50}
-    return {"id": session_id, "status": "stopped", "progress": 50}
+    _session_state[session_id] = {"status": "processing", "progress": 25}
+    logger.info("[session %d] stop_recording: received audio file '%s'", session_id, audio_file.filename)
+
+    audio_bytes = await audio_file.read()
+    logger.info("[session %d] stop_recording: audio read (%d bytes) — starting transcription", session_id, len(audio_bytes))
+
+    try:
+        transcript = transcribe_audio(audio_bytes, filename=audio_file.filename or "audio.m4a")
+        logger.info("[session %d] stop_recording: transcription complete (%d chars)", session_id, len(transcript))
+        logger.debug("[session %d] transcript: %s", session_id, transcript)
+    except Exception as e:
+        logger.error("[session %d] stop_recording: transcription failed — %s", session_id, e)
+        _session_state[session_id] = {"status": "error", "progress": 0}
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+
+    _session_state[session_id] = {"status": "processing", "progress": 75}
+    logger.info("[session %d] stop_recording: starting RAG pipeline", session_id)
+
+    try:
+        result = await compiled_graph.ainvoke({"transcript": transcript})
+        logger.info("[session %d] stop_recording: RAG pipeline complete", session_id)
+    except Exception as e:
+        logger.error("[session %d] stop_recording: RAG pipeline failed — %s", session_id, e)
+        _session_state[session_id] = {"status": "error", "progress": 0}
+        raise HTTPException(status_code=500, detail=f"RAG pipeline failed: {e}")
+
+    _session_state[session_id] = {"status": "complete", "progress": 100}
+
+    return {
+        "id": session_id,
+        "status": "complete",
+        "progress": 100,
+        "transcript": transcript,
+        "form": result["extracted_form"],
+    }
 
 
 @router.post("/{session_id}/process")
