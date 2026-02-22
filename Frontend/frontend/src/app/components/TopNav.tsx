@@ -27,7 +27,7 @@ export function TopNav() {
         <div className="flex items-center gap-8 h-full">
           <div className="flex items-center gap-3">
             <Link to="/" className="font-semibold text-lg tracking-tight">
-              Nurse Intake Copilot
+              Shift Hero
             </Link>
             {/* Optional Demo Pill */}
             <span className="hidden sm:inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
