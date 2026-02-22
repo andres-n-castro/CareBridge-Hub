@@ -65,6 +65,7 @@ async def list_sessions(
             SELECT id,
                    patient_info->>'name' AS name,
                    (patient_info->>'room_num')::int AS room_num,
+                   created_at,
                    updated_at,
                    status,
                    progress
@@ -80,6 +81,7 @@ async def list_sessions(
             "id": int(row["id"]),
             "name": row["name"],
             "room_num": row["room_num"],
+            "created_at": row["created_at"],
             "updated_at": row["updated_at"],
             # Prefer in-memory state for actively-processing sessions,
             # fall back to persisted DB value for completed/restarted ones.

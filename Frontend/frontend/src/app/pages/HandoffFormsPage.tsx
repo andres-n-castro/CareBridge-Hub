@@ -1,85 +1,75 @@
-import { useState, useMemo } from "react";
-import { Link } from "react-router";
-import { Plus } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Link, useNavigate } from "react-router";
+import { Plus, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { HandoffForm, HandoffStatus } from "../types/handoff";
+import { HandoffForm } from "../types/handoff";
 import { MostRecentHandoffCard } from "../components/handoff/MostRecentHandoffCard";
 import { HandoffFormsTable } from "../components/handoff/HandoffFormsTable";
 import { HandoffFilters, HandoffFiltersState } from "../components/handoff/HandoffFilters";
-
-// Mock Data
-const MOCK_HANDOFFS: HandoffForm[] = [
-  {
-    id: "h-1",
-    patientId: "PT-•••4821",
-    roomNumber: "304-A",
-    createdAt: new Date().toISOString(), // Just now
-    status: "needs_review",
-    attention: { missing: 2, uncertain: 1, followUps: 3 },
-    lastUpdated: new Date(Date.now() - 1000 * 60 * 12).toISOString(), // 12 mins ago
-  },
-  {
-    id: "h-2",
-    patientId: "PT-•••9284",
-    roomNumber: "210-B",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), // 5 hours ago
-    status: "approved",
-    attention: { missing: 0, uncertain: 0, followUps: 0 },
-    lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
-  },
-  {
-    id: "h-3",
-    patientId: "PT-•••1122",
-    roomNumber: "101",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // Yesterday
-    status: "failed",
-    attention: { missing: 0, uncertain: 0, followUps: 0 },
-    lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 23).toISOString(),
-  },
-  {
-    id: "h-4",
-    patientId: "PT-•••3344",
-    roomNumber: "ICU-2",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(), // 2 days ago
-    status: "approved",
-    attention: { missing: 0, uncertain: 0, followUps: 0 },
-    lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 47).toISOString(),
-  },
-  {
-    id: "h-5",
-    patientId: "PT-•••5566",
-    roomNumber: "ER-4",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 50).toISOString(), // 2 days ago
-    status: "needs_review",
-    attention: { missing: 1, uncertain: 0, followUps: 0 },
-    lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 49).toISOString(),
-  },
-];
+import * as api from "../services/api";
 
 export default function HandoffFormsPage() {
+  const navigate = useNavigate();
+  const [handoffs, setHandoffs] = useState<HandoffForm[]>([]);
+  const [creatingSession, setCreatingSession] = useState(false);
   const [filters, setFilters] = useState<HandoffFiltersState>({
     search: "",
     status: "all",
     attention: "all",
     sort: "recent",
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const handleRefresh = () => {
-    setIsLoading(true);
-    // Simulate refresh
-    setTimeout(() => setIsLoading(false), 1000);
+  const handleNewIntake = async () => {
+    setCreatingSession(true);
+    try {
+      const { id } = await api.createSession();
+      navigate(`/sessions/${id}/record`);
+    } catch {
+      setError("Failed to create a new session. Please try again.");
+      setCreatingSession(false);
+    }
+  };
+
+  const fetchHandoffs = async () => {
+    try {
+      setIsLoading(true);
+      const data = await api.listSessions(100, 0);
+      setHandoffs(data.map(api.backendSessionToHandoffForm));
+      setError(null);
+    } catch {
+      setError("Failed to load handoff forms. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHandoffs();
+  }, []);
+
+  const handleRefresh = async () => {
+    try {
+      setIsLoading(true);
+      const data = await api.listSessions(100, 0);
+      setHandoffs(data.map(api.backendSessionToHandoffForm));
+      setError(null);
+    } catch {
+      // Silently ignore refresh errors — list already shown
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const filteredHandoffs = useMemo(() => {
-    let result = [...MOCK_HANDOFFS];
+    let result = [...handoffs];
 
     // Search
     if (filters.search) {
       const q = filters.search.toLowerCase();
-      result = result.filter(h => 
-        h.patientId.toLowerCase().includes(q) || 
+      result = result.filter(h =>
+        h.patientId.toLowerCase().includes(q) ||
         h.roomNumber.toLowerCase().includes(q)
       );
     }
@@ -107,7 +97,7 @@ export default function HandoffFormsPage() {
     });
 
     return result;
-  }, [filters]);
+  }, [handoffs, filters]);
 
   // Separate most recent from the rest
   const mostRecentHandoff = filteredHandoffs.length > 0 ? filteredHandoffs[0] : null;
@@ -127,13 +117,15 @@ export default function HandoffFormsPage() {
         </div>
         <div className="flex items-center gap-3">
           <Button variant="ghost" asChild>
-             <Link to="/sessions">View Sessions</Link>
+            <Link to="/sessions">View Sessions</Link>
           </Button>
-          <Button className="shadow-sm" asChild>
-            <Link to="/sessions">
+          <Button className="shadow-sm" onClick={handleNewIntake} disabled={creatingSession}>
+            {creatingSession ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
               <Plus className="mr-2 h-4 w-4" />
-              Start New Intake
-            </Link>
+            )}
+            Start New Intake
           </Button>
         </div>
       </div>
@@ -145,17 +137,17 @@ export default function HandoffFormsPage() {
 
       {/* List Section */}
       <div className="space-y-4">
-        <HandoffFilters 
-          filters={filters} 
-          onFilterChange={setFilters} 
-          onRefresh={handleRefresh} 
+        <HandoffFilters
+          filters={filters}
+          onFilterChange={setFilters}
+          onRefresh={handleRefresh}
         />
-        
-        <HandoffFormsTable 
-          handoffs={mostRecentHandoff && !filters.search && filters.status === 'all' && filters.attention === 'all' ? listHandoffs : filteredHandoffs} 
-          isLoading={isLoading} 
-          error={error} 
-          onRetry={handleRefresh}
+
+        <HandoffFormsTable
+          handoffs={mostRecentHandoff && !filters.search && filters.status === 'all' && filters.attention === 'all' ? listHandoffs : filteredHandoffs}
+          isLoading={isLoading}
+          error={error}
+          onRetry={fetchHandoffs}
         />
       </div>
     </div>

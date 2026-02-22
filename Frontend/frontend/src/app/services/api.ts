@@ -15,6 +15,7 @@ import {
   FieldMetadata,
   Medication,
 } from '../pages/review/types';
+import { HandoffForm, HandoffStatus } from '../types/handoff';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -83,6 +84,7 @@ interface BackendSessionRow {
   id: number;
   name: string | null;
   room_num: number | null;
+  created_at: string;
   updated_at: string;
   status: string;
   progress: number;
@@ -251,6 +253,29 @@ export function backendSessionToFrontend(row: BackendSessionRow): Session {
     status: backendStatusToFrontend(row.status),
     lastUpdated: formatRelativeTime(row.updated_at),
     owner: '',
+  };
+}
+
+function backendStatusToHandoffStatus(status: string): HandoffStatus {
+  if (status === 'final') return 'approved';
+  if (status === 'error') return 'failed';
+  return 'needs_review';
+}
+
+/** Map a backend session row to the HandoffForm type used by HandoffFormsPage. */
+export function backendSessionToHandoffForm(row: BackendSessionRow): HandoffForm {
+  const id = String(row.id);
+  const name = row.name && row.name !== 'Unknown' ? row.name : null;
+  return {
+    id,
+    patientId: name ?? `PT-•••${id.slice(-4)}`,
+    roomNumber: row.room_num != null ? String(row.room_num) : '—',
+    createdAt: row.created_at ?? row.updated_at,
+    status: backendStatusToHandoffStatus(row.status),
+    // Per-field attention stats are not available in the list endpoint.
+    // They would require loading each form individually — too expensive for a list.
+    attention: { missing: 0, uncertain: 0, followUps: 0 },
+    lastUpdated: row.updated_at,
   };
 }
 
