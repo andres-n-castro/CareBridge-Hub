@@ -22,7 +22,7 @@ def _make_async_url(url: str) -> str:
 engine = create_async_engine(
     _make_async_url(DATABASE_URL),
     echo=False,
-    connect_args={"ssl": True},
+    connect_args={"ssl": True, "statement_cache_size": 0},
 )
 
 AsyncSessionLocal = sessionmaker(
