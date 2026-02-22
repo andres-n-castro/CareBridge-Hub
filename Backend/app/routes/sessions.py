@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -123,7 +124,7 @@ async def stop_recording(
     logger.info("[session %d] stop_recording: audio read (%d bytes) — starting transcription", session_id, len(audio_bytes))
 
     try:
-        transcript = transcribe_audio(audio_bytes, filename=audio_file.filename or "audio.m4a")
+        transcript = await asyncio.to_thread(transcribe_audio, audio_bytes, filename=audio_file.filename or "audio.m4a")
         logger.info("[session %d] stop_recording: transcription complete (%d chars)", session_id, len(transcript))
         logger.debug("[session %d] transcript: %s", session_id, transcript)
     except Exception as e:
