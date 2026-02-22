@@ -254,7 +254,7 @@ export function backendSessionToFrontend(row: BackendSessionRow): Session {
     id,
     patientId: `PT-${displayId}`,
     maskedPatientId: `PT-•••${id.slice(-4)}`,
-    createdAt: row.updated_at,
+    createdAt: row.created_at,
     status: backendStatusToFrontend(row.status),
     lastUpdated: formatRelativeTime(row.updated_at),
     owner: '',
