@@ -5,7 +5,7 @@ import pandas as pd
 
 
 
-SVI_PATH = "cdc_data/svi_interactive_map.csv"
+SVI_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cdc_data", "svi_interactive_map.csv")
 TRANSCRIPT_PATH = "transcripts/transcript.txt"
 
 
