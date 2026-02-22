@@ -11,11 +11,13 @@ from app.routes.patients import router as patient_router
 from app.routes.auth import router as auth_router
 from app.routes.sessions import router as sessions_router
 from app.routes.media import router as media_router
+from app.routes.svi import router as svi_router
 
 app = FastAPI(title="CareBridge API")
 app.include_router(patient_router)
 app.include_router(auth_router)
 app.include_router(sessions_router)
+app.include_router(svi_router)
 app.include_router(media_router)
 
 app.add_middleware(

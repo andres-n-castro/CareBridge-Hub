@@ -1,0 +1,13 @@
+Backend Ecosystem (Python)
+• FastAPI: Acts as the core REST API framework. It handles the POST endpoints for receiving audio files, triggers the STT processing, orchestrates the LLM/RAG pipeline, and serves the finalized JSON data back to the frontend.
+• Uvicorn: The ASGI web server implementation that runs the FastAPI application, ensuring high performance and handling concurrent asynchronous requests (e.g., multiple nurses submitting audio files at once).
+• Pydantic: Used heavily for data validation and schema definition. You will define strict Pydantic models for the incoming STT transcripts, the CDC SVI JSON responses, and the final output schema expected by the LLM to ensure the AI returns strictly typed data.
+• PostgreSQL: The primary relational database. It stores user (nurse) credentials, patient session metadata, raw transcripts, and the finalized, structured form data.
+• SQLAlchemy: The ORM used to interact with PostgreSQL. It defines the database models, handles migrations, and executes CRUD operations (e.g., prisma.session.create()) securely from within the FastAPI route handlers.
+• LangGraph
+Frontend Ecosystem (TypeScript)
+• NextJS
+• React: The core UI library used to build the single-page application (SPA). It manages local state (e.g., recording status, microphone permissions) and renders the final dashboard.
+• TypeScript: Enforces strict typing on the frontend, ensuring that the React components perfectly match the Pydantic schemas sent by the FastAPI backend.
+• Vercel: The hosting platform for the React frontend, providing seamless CI/CD directly from your GitHub repository.
+• Daisy UI / Figma: Figma is used for wireframing the interface. Daisy UI (a Tailwind CSS component library) is used to rapidly build accessible, clean medical dashboard components (buttons, forms, modals) in React.

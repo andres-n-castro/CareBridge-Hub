@@ -16,6 +16,28 @@ _session_state: dict[int, dict] = {}
 _finalized: set[int] = set()
 
 
+@router.post("", status_code=201)
+async def create_session(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        text("""
+            INSERT INTO patients (nurse, patient_info, background, current_assessment, vital_signs)
+            VALUES (
+                '{"name":"Unknown"}'::jsonb,
+                '{"name":"Unknown","DOB":0,"room_num":0,"allergies":"None","code_status":"Full","reason_for_admission":null}'::jsonb,
+                '{"past_medical_history":null,"hospital_day":null,"procedures":null}'::jsonb,
+                '{"pain_level_0_10":null,"additional_info":null}'::jsonb,
+                '{"temp_c":null,"hr_bpm":null,"rr_bpm":null,"bp_sys":null,"bp_dia":null}'::jsonb
+            )
+            RETURNING id
+        """)
+    )
+    row = result.mappings().one()
+    await db.commit()
+    session_id = int(row["id"])
+    _session_state[session_id] = {"status": "pending", "progress": 0}
+    return {"id": session_id}
+
+
 def _get_status(session_id: int) -> str:
     return _session_state.get(session_id, {}).get("status", "ready")
 
@@ -107,7 +129,7 @@ async def stop_recording(
         _session_state[session_id] = {"status": "error", "progress": 0}
         raise HTTPException(status_code=500, detail=f"RAG pipeline failed: {e}")
 
-    _session_state[session_id] = {"status": "complete", "progress": 100}
+    _session_state[session_id] = {"status": "complete", "progress": 100, "transcript": transcript}
 
     return {
         "id": session_id,
