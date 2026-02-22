@@ -1,5 +1,5 @@
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import BigInteger, Column, DateTime, func
+from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 
 class Base(DeclarativeBase):
@@ -14,6 +14,11 @@ class Patient(Base):
     background = Column(JSONB, nullable=False)
     current_assessment = Column(JSONB, nullable=False)
     vital_signs = Column(JSONB, nullable=False, server_default="{}")
+    medications = Column(JSONB, nullable=False, server_default="[]")
+
+    transcript = Column(Text, nullable=True)
+    status = Column(String(50), nullable=False, server_default="pending")
+    progress = Column(Integer, nullable=False, server_default="0")
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -35,7 +35,7 @@ const ALL_FIELDS = [
 
 const FIELD_LABELS: Record<string, string> = {
   patientName: 'Name',
-  dob: 'Date of Birth',
+  dob: 'Age (years)',
   room: 'Room',
   allergies: 'Allergies',
   codeStatus: 'Code Status',
@@ -44,7 +44,7 @@ const FIELD_LABELS: Record<string, string> = {
   relevantPMH: 'Relevant PMH (Past Medical History)',
   hospitalDay: 'Hospital Day / Post-Op Day',
   procedures: 'Procedures',
-  temp: 'Temp',
+  temp: 'Temp (°C)',
   heartRate: 'Heart Rate',
   respiratoryRate: 'Respiratory Rate',
   bpSystolic: 'Blood Pressure (Systolic)',
@@ -302,10 +302,13 @@ export function FormPanel({
                 </div>
                 <div>
                   <FieldWrapper id="dob">
-                    <Input 
-                      type="date"
-                      value={data.dob.value} 
+                    <Input
+                      type="number"
+                      min={0}
+                      max={130}
+                      value={data.dob.value}
                       onChange={(e) => handleFieldChange('dob', e.target.value)}
+                      placeholder="e.g. 42"
                     />
                   </FieldWrapper>
                 </div>
@@ -418,7 +421,7 @@ export function FormPanel({
                     <Input 
                       value={data.temp.value} 
                       onChange={(e) => handleFieldChange('temp', e.target.value)}
-                      placeholder="°F"
+                      placeholder="°C"
                     />
                   </FieldWrapper>
                 </div>

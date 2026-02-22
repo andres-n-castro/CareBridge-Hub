@@ -2,16 +2,17 @@ import importlib.util
 import logging
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+
+from app.db import get_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sessions", tags=["svi"])
 
 # ---------------------------------------------------------------------------
 # Attempt to load cdcsvi_lookup from the "LLM Parse" folder at runtime.
-# That module imports pandas and loads the SVI CSV at import time, so we
-# guard every step.  If anything fails we set SVI_AVAILABLE = False and the
-# endpoint returns an empty-but-valid response instead of crashing.
 # ---------------------------------------------------------------------------
 _llm_parse_dir = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "LLM Parse")
@@ -43,9 +44,20 @@ except Exception as exc:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _flag_to_category(flag_value: int) -> str:
-    """Convert a raw SVI flag (0 or 1) to a display category."""
-    return "High" if flag_value else "Low"
+def _flag_to_category(key: str, raw: int) -> str:
+    """
+    Convert a raw SVI flag value to a display category.
+    F_THEME1 is a count (0–4), so we apply graduated thresholds.
+    All other flags are binary (0 or 1).
+    """
+    if key == "F_THEME1":
+        if raw == 0:
+            return "Low"
+        elif raw <= 2:
+            return "Moderate"
+        else:
+            return "High"
+    return "High" if raw else "Low"
 
 
 def _svi_flags_to_metrics(flags: dict) -> list[dict]:
@@ -59,8 +71,9 @@ def _svi_flags_to_metrics(flags: dict) -> list[dict]:
     metrics = []
     for key, label in label_map:
         raw = int(flags.get(key, 0))
-        score = float(raw)
-        category = _flag_to_category(raw)
+        # Normalize F_THEME1 score to 0.00–1.00 range; others are already 0/1.
+        score = raw / 4.0 if key == "F_THEME1" else float(raw)
+        category = _flag_to_category(key, raw)
         metrics.append({"label": label, "score": f"{score:.2f}", "category": category})
     return metrics
 
@@ -73,6 +86,7 @@ def _svi_flags_to_questions(flags: dict) -> list[dict]:
             "question": "Do you have reliable transportation to pick up prescriptions?",
             "rationale": "Patient's area shows vehicle access vulnerability.",
             "status": "new",
+            "relatedFieldIds": ["geoLocation", "additionalInfo"],
         })
     if flags.get("F_LIMENG", 0):
         questions.append({
@@ -80,6 +94,7 @@ def _svi_flags_to_questions(flags: dict) -> list[dict]:
             "question": "Would you prefer to receive instructions in a language other than English?",
             "rationale": "Patient's area has limited English proficiency indicators.",
             "status": "new",
+            "relatedFieldIds": ["additionalInfo"],
         })
     if int(flags.get("F_THEME1", 0)) >= 2:
         questions.append({
@@ -87,6 +102,7 @@ def _svi_flags_to_questions(flags: dict) -> list[dict]:
             "question": "Do you have any concerns about affording medications or follow-up visits?",
             "rationale": "Patient's area shows socioeconomic vulnerability.",
             "status": "new",
+            "relatedFieldIds": ["additionalInfo"],
         })
     if flags.get("F_CROWD", 0):
         questions.append({
@@ -94,6 +110,7 @@ def _svi_flags_to_questions(flags: dict) -> list[dict]:
             "question": "Will you have a quiet, clean space at home to recover?",
             "rationale": "Patient's area shows housing crowding indicators.",
             "status": "new",
+            "relatedFieldIds": ["additionalInfo"],
         })
     if flags.get("F_GROUPQ", 0):
         questions.append({
@@ -101,6 +118,7 @@ def _svi_flags_to_questions(flags: dict) -> list[dict]:
             "question": "Can you describe your current living situation?",
             "rationale": "Patient's area has group quarters population indicators.",
             "status": "new",
+            "relatedFieldIds": ["additionalInfo"],
         })
     return questions
 
@@ -110,21 +128,28 @@ def _svi_flags_to_questions(flags: dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 @router.get("/{session_id}/svi")
-async def get_svi(session_id: int):
+async def get_svi(session_id: int, db: AsyncSession = Depends(get_db)):
     """
     Return Social Vulnerability Index metrics and follow-up questions for a
-    session.  Requires that the session's transcript has been stored in
-    _session_state (populated by the /stop endpoint after transcription).
+    session. Reads transcript from in-memory state first, falls back to DB.
     """
     if not SVI_AVAILABLE:
         logger.info("SVI lookup not available — returning empty response")
         return {"metrics": [], "questions": [], "error": "svi_unavailable"}
 
-    # Import here to avoid circular import at module level
     from app.routes.sessions import _session_state  # noqa: PLC0415
 
-    state = _session_state.get(session_id, {})
-    transcript: str | None = state.get("transcript")
+    # Try in-memory state first (active session), then fall back to DB.
+    transcript: str | None = _session_state.get(session_id, {}).get("transcript")
+
+    if not transcript:
+        result = await db.execute(
+            text("SELECT transcript FROM patients WHERE id = :id"),
+            {"id": session_id},
+        )
+        row = result.mappings().one_or_none()
+        if row:
+            transcript = row["transcript"]
 
     if not transcript:
         return {"metrics": [], "questions": [], "error": "transcript_not_ready"}

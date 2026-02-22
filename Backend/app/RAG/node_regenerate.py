@@ -10,7 +10,7 @@ from .state import GraphState
 
 logger = logging.getLogger(__name__)
 
-with open(Path(__file__).parent.parent / "LLM Parse" / "schema.json", encoding="utf-8") as f:
+with open(Path(__file__).parent.parent / "LLM Parse" / "prompt" / "schema.json", encoding="utf-8") as f:
     _SCHEMA = {**json.load(f), "title": "nurse_shift_handoff"}
 
 _llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)

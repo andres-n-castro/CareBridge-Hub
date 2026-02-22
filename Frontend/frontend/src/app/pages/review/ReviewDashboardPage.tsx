@@ -50,35 +50,55 @@ export default function ReviewDashboardPage() {
 
     const load = async () => {
       try {
-        // 1. Transcript — sessionStorage is populated by ProcessingPage after /stop
+        // 1. Transcript — sessionStorage set by ProcessingPage; fall back to DB.
+        let segments: TranscriptSegment[] = [];
         const cachedTranscript = sessionStorage.getItem(`transcript-${sessionId}`);
         if (cachedTranscript) {
-          setTranscript(api.plainTextToSegments(cachedTranscript));
+          segments = api.plainTextToSegments(cachedTranscript);
+        } else {
+          try {
+            const { transcript: dbText } = await api.getTranscript(numericId);
+            if (dbText) {
+              segments = api.plainTextToSegments(dbText);
+              // Repopulate sessionStorage so subsequent loads are faster.
+              sessionStorage.setItem(`transcript-${sessionId}`, dbText);
+            }
+          } catch {
+            // Transcript not yet available — panel stays empty.
+          }
         }
+        setTranscript(segments);
 
-        // 2. Form — prefer sessionStorage (raw RAG output), fall back to GET /form
+        // 2. Form — prefer sessionStorage (raw RAG output), fall back to GET /form.
+        let intakeForm;
         const cachedForm = sessionStorage.getItem(`form-${sessionId}`);
         if (cachedForm) {
           try {
             const parsed = JSON.parse(cachedForm) as Record<string, unknown>;
-            setFormData(api.rawExtractedFormToIntakeForm(parsed));
+            intakeForm = api.rawExtractedFormToIntakeForm(parsed);
           } catch {
-            // Malformed JSON in sessionStorage — fall back to DB
+            // Malformed JSON in sessionStorage — fall back to DB.
             const patientOut = await api.getForm(numericId);
-            setFormData(api.patientOutToIntakeForm(patientOut));
+            intakeForm = api.patientOutToIntakeForm(patientOut);
           }
         } else {
           const patientOut = await api.getForm(numericId);
-          setFormData(api.patientOutToIntakeForm(patientOut));
+          intakeForm = api.patientOutToIntakeForm(patientOut);
         }
 
-        // 3. SVI — always from the API (may return empty if transcript not stored yet)
+        // Assign transcript evidence IDs to form fields via keyword matching.
+        if (segments.length > 0) {
+          intakeForm = api.assignEvidenceIds(intakeForm, segments);
+        }
+        setFormData(intakeForm);
+
+        // 3. SVI — always from the API (may return empty if transcript not ready).
         try {
           const sviData = await api.getSVI(numericId);
           if (sviData.metrics.length > 0) setSviMetrics(sviData.metrics);
           if (sviData.questions.length > 0) setQuestions(sviData.questions);
         } catch {
-          // SVI unavailable — panel stays empty
+          // SVI unavailable — panel stays empty.
         }
       } catch (err) {
         toast.error('Failed to load session data.');

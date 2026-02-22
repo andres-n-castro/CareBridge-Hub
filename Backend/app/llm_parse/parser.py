@@ -9,7 +9,7 @@ load_dotenv()
 
 _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-_LLM_PARSE_DIR = Path(__file__).parent.parent / "LLM Parse"
+_LLM_PARSE_DIR = Path(__file__).parent.parent / "LLM Parse" / "prompt"
 
 with open(_LLM_PARSE_DIR / "prompt.txt", "r", encoding="utf-8") as f:
     _PROMPT = f.read()

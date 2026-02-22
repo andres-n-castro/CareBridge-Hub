@@ -13,6 +13,7 @@ import {
   SVIMetric,
   FollowUpQuestion,
   FieldMetadata,
+  Medication,
 } from '../pages/review/types';
 
 // ---------------------------------------------------------------------------
@@ -33,6 +34,7 @@ interface PatientInfo {
   allergies: string;
   code_status: string;
   reason_for_admission: string | null;
+  geo_location: string | null;
 }
 
 interface Background {
@@ -65,6 +67,7 @@ export interface PatientOut {
   background: Background;
   current_assessment: CurrentAssessment;
   vital_signs: VitalSigns;
+  medications: Medication[] | null;
 }
 
 export interface PatientCreate {
@@ -73,6 +76,7 @@ export interface PatientCreate {
   background: Background;
   current_assessment: CurrentAssessment;
   vital_signs: VitalSigns;
+  medications: Medication[] | null;
 }
 
 interface BackendSessionRow {
@@ -158,7 +162,6 @@ export async function stopRecording(
   audioBlob: Blob,
 ): Promise<StopResponse> {
   const formData = new FormData();
-  // Backend expects the field named "audio_file".
   formData.append('audio_file', audioBlob, 'recording.webm');
   return postForm<StopResponse>(`/sessions/${sessionId}/stop`, formData);
 }
@@ -198,6 +201,15 @@ export async function getSVI(sessionId: number): Promise<SVIResponse> {
   return request<SVIResponse>(`/sessions/${sessionId}/svi`);
 }
 
+/** Fetch the persisted transcript for a session (DB-backed). */
+export async function getTranscript(
+  sessionId: number,
+): Promise<{ id: number; transcript: string }> {
+  return request<{ id: number; transcript: string }>(
+    `/sessions/${sessionId}/transcript`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Data-mapping utilities
 // ---------------------------------------------------------------------------
@@ -220,6 +232,7 @@ function backendStatusToFrontend(status: string): SessionStatus {
     recording: 'Recording',
     processing: 'Processing',
     complete: 'Ready',
+    ready: 'Ready',
     final: 'Approved',
     error: 'Failed',
   };
@@ -229,7 +242,6 @@ function backendStatusToFrontend(status: string): SessionStatus {
 /** Map a backend session row to the frontend Session type. */
 export function backendSessionToFrontend(row: BackendSessionRow): Session {
   const id = String(row.id);
-  // Pad to at least 5 chars for display; last 4 digits shown in masked form.
   const displayId = id.padStart(5, '0');
   return {
     id,
@@ -244,20 +256,53 @@ export function backendSessionToFrontend(row: BackendSessionRow): Session {
 
 // ---- Form mapping ----------------------------------------------------------
 
+/**
+ * Create a FieldMetadata wrapper.
+ * AI-extracted fields should pass confidence=0.85 and isAiSource=true to get
+ * the 'uncertain' status that prompts nurses to verify them.
+ */
 function makeField<T>(
   value: T,
   required = false,
+  confidence?: number,
+  isAiSource = false,
 ): FieldMetadata<T> {
   const isEmpty =
     value === null ||
     value === undefined ||
     value === '' ||
     (Array.isArray(value) && value.length === 0);
-  return {
-    value: (value ?? (Array.isArray(value) ? [] : '')) as T,
-    status: isEmpty ? 'missing' : 'filled',
+
+  const status = isEmpty
+    ? 'missing'
+    : isAiSource
+    ? 'uncertain'
+    : 'filled';
+
+  const meta: FieldMetadata<T> = {
+    value: (isEmpty ? (Array.isArray(value) ? [] : '') : value) as T,
+    status,
     isRequired: required,
   };
+  if (confidence !== undefined && !isEmpty) {
+    meta.confidence = confidence;
+  }
+  return meta;
+}
+
+/** Compute age in years from an ISO date string (e.g. "1980-05-15"). */
+function dobToAge(dob: string | null | undefined): string {
+  if (!dob) return '';
+  const year = new Date(dob).getFullYear();
+  if (isNaN(year)) return '';
+  const age = new Date().getFullYear() - year;
+  return age > 0 && age < 130 ? String(age) : '';
+}
+
+/** Convert Fahrenheit to Celsius, rounded to 1 decimal place. */
+function fToC(f: number | null | undefined): string {
+  if (f == null) return '';
+  return ((f - 32) * 5 / 9).toFixed(1);
 }
 
 /** Map a PatientOut (from GET /sessions/{id}/form) to the UI IntakeForm. */
@@ -270,13 +315,13 @@ export function patientOutToIntakeForm(data: PatientOut): IntakeForm {
 
   return {
     patientName: makeField(pi.name ?? '', true),
-    // Backend stores DOB as age (integer). Display as "Age: N".
-    dob: makeField(pi.DOB != null && pi.DOB !== 0 ? `Age: ${pi.DOB}` : '', true),
+    // Backend stores age as integer; display directly as numeric string.
+    dob: makeField(pi.DOB != null && pi.DOB !== 0 ? String(pi.DOB) : '', true),
     room: makeField(pi.room_num != null && pi.room_num !== 0 ? String(pi.room_num) : '', true),
     allergies: makeField(pi.allergies && pi.allergies !== 'None' ? pi.allergies : '', true),
     codeStatus: makeField(pi.code_status && pi.code_status !== 'Full' ? pi.code_status : '', true),
     reasonForAdmission: makeField(pi.reason_for_admission ?? '', true),
-    geoLocation: makeField('', false),
+    geoLocation: makeField(pi.geo_location ?? '', false),
     relevantPMH: makeField((bg.past_medical_history ?? []).join(', '), true),
     hospitalDay: makeField(bg.hospital_day != null ? String(bg.hospital_day) : '', false),
     procedures: makeField((bg.procedures ?? []).join(', '), false),
@@ -287,45 +332,79 @@ export function patientOutToIntakeForm(data: PatientOut): IntakeForm {
     bpDiastolic: makeField(vs.bp_dia != null ? String(vs.bp_dia) : '', true),
     painLevel: makeField(ca.pain_level_0_10 != null ? String(ca.pain_level_0_10) : '', true),
     additionalInfo: makeField(ca.additional_info ?? '', false),
-    medications: makeField([], false),
+    medications: makeField(data.medications ?? [], false),
     nurseName: makeField(nu.name && nu.name !== 'Unknown' ? nu.name : '', true),
   };
 }
 
 /**
  * Map the raw extracted_form dict returned by the RAG pipeline (stop endpoint)
- * to IntakeForm.  The LLM returns a PatientCreate-shaped object.
+ * to IntakeForm.
+ *
+ * The LLM schema (schema.json) produces a different key structure from the
+ * Pydantic PatientOut schema, so we map explicitly here:
+ *
+ *   LLM key                      → IntakeForm field
+ *   patient_information.name     → patientName
+ *   patient_information.dob      → dob  (ISO date → age in years)
+ *   patient_information.room     → room
+ *   patient_information.allergies → allergies
+ *   patient_information.code_status → codeStatus
+ *   patient_information.reason_for_admission → reasonForAdmission
+ *   patient_information.geolocation → geoLocation
+ *   background.relevant_pmh      → relevantPMH
+ *   background.hospital_day      → hospitalDay
+ *   background.procedures        → procedures
+ *   vital_signs.temperature_f    → temp  (°F → °C conversion)
+ *   vital_signs.heart_rate       → heartRate
+ *   vital_signs.respiratory_rate → respiratoryRate
+ *   vital_signs.bp_systolic      → bpSystolic
+ *   vital_signs.bp_diastolic     → bpDiastolic
+ *   current_assessment.*         → painLevel, additionalInfo
+ *   nurse_on_shift               → nurseName
+ *
+ * AI-extracted fields are marked 'uncertain' with confidence=0.85 so nurses
+ * are prompted to verify them before approving.
  */
 export function rawExtractedFormToIntakeForm(rawForm: Record<string, unknown>): IntakeForm {
-  const asPatientOut: PatientOut = {
-    id: 0,
-    nurse: (rawForm.nurse as Nurse) ?? { name: '' },
-    patient_info: (rawForm.patient_info as PatientInfo) ?? {
-      name: '',
-      DOB: 0,
-      room_num: 0,
-      allergies: 'None',
-      code_status: 'Full',
-      reason_for_admission: null,
-    },
-    background: (rawForm.background as Background) ?? {
-      past_medical_history: null,
-      hospital_day: null,
-      procedures: null,
-    },
-    current_assessment: (rawForm.current_assessment as CurrentAssessment) ?? {
-      pain_level_0_10: null,
-      additional_info: null,
-    },
-    vital_signs: (rawForm.vital_signs as VitalSigns) ?? {
-      temp_c: null,
-      hr_bpm: null,
-      rr_bpm: null,
-      bp_sys: null,
-      bp_dia: null,
-    },
+  const pi = (rawForm.patient_information as Record<string, any>) ?? {};
+  const bg = (rawForm.background as Record<string, any>) ?? {};
+  const vs = (rawForm.vital_signs as Record<string, any>) ?? {};
+  const ca = (rawForm.current_assessment as Record<string, any>) ?? {};
+  const nurseOnShift = typeof rawForm.nurse_on_shift === 'string' ? rawForm.nurse_on_shift : '';
+
+  const ai = <T>(value: T, required = false) => makeField(value, required, 0.85, true);
+
+  return {
+    patientName: ai(pi.name ?? '', true),
+    // LLM returns ISO date; compute age in years.
+    dob: ai(dobToAge(pi.dob), true),
+    room: ai(pi.room != null ? String(pi.room) : '', true),
+    allergies: ai(pi.allergies ?? '', true),
+    codeStatus: ai(pi.code_status ?? '', true),
+    reasonForAdmission: ai(pi.reason_for_admission ?? '', true),
+    geoLocation: ai(pi.geolocation ?? '', false),
+    relevantPMH: ai(
+      pi.relevant_pmh ?? (bg.relevant_pmh != null ? String(bg.relevant_pmh) : ''),
+      true,
+    ),
+    hospitalDay: ai(bg.hospital_day != null ? String(bg.hospital_day) : '', false),
+    procedures: ai(
+      bg.procedures != null ? String(bg.procedures) : '',
+      false,
+    ),
+    // LLM extracts temperature in °F; convert to °C for storage/display.
+    temp: ai(fToC(vs.temperature_f), true),
+    heartRate: ai(vs.heart_rate != null ? String(vs.heart_rate) : '', true),
+    respiratoryRate: ai(vs.respiratory_rate != null ? String(vs.respiratory_rate) : '', true),
+    bpSystolic: ai(vs.bp_systolic != null ? String(vs.bp_systolic) : '', true),
+    bpDiastolic: ai(vs.bp_diastolic != null ? String(vs.bp_diastolic) : '', true),
+    painLevel: ai(ca.pain_level_0_10 != null ? String(ca.pain_level_0_10) : '', true),
+    additionalInfo: ai(ca.additional_info ?? '', false),
+    // Medications are not extracted by the LLM; nurses add them manually.
+    medications: makeField([], false),
+    nurseName: ai(nurseOnShift, true),
   };
-  return patientOutToIntakeForm(asPatientOut);
 }
 
 /** Map IntakeForm back to PatientCreate for PUT /sessions/{id}/form. */
@@ -344,10 +423,10 @@ export function intakeFormToPatientCreate(form: IntakeForm): PatientCreate {
   const get = <T>(field: string): T =>
     ((form[field] as FieldMetadata<T>)?.value ?? '') as T;
 
-  // DOB: backend wants integer (age). Frontend stores "Age: N" or just a number.
-  const dobRaw = get<string>('dob');
-  const dobMatch = dobRaw.match(/^Age:\s*(\d+)$/);
-  const dob = dobMatch ? parseInt(dobMatch[1], 10) : parseIntOrNull(dobRaw) ?? 0;
+  // DOB: backend wants integer age. Input is a plain number string.
+  const dob = parseIntOrNull(get<string>('dob')) ?? 0;
+
+  const meds = (form.medications as FieldMetadata<Medication[]>)?.value ?? [];
 
   return {
     nurse: { name: get<string>('nurseName') || 'Unknown' },
@@ -358,6 +437,7 @@ export function intakeFormToPatientCreate(form: IntakeForm): PatientCreate {
       allergies: get<string>('allergies') || 'None',
       code_status: get<string>('codeStatus') || 'Full',
       reason_for_admission: get<string>('reasonForAdmission') || null,
+      geo_location: get<string>('geoLocation') || null,
     },
     background: {
       past_medical_history: splitList(get<string>('relevantPMH')),
@@ -375,18 +455,65 @@ export function intakeFormToPatientCreate(form: IntakeForm): PatientCreate {
       bp_sys: parseIntOrNull(get<string>('bpSystolic')),
       bp_dia: parseIntOrNull(get<string>('bpDiastolic')),
     },
+    medications: meds.length > 0 ? meds : null,
   };
 }
 
 /**
+ * Assign evidenceIds to each form field by keyword-matching against transcript
+ * segments. Call this after both form data and transcript segments are loaded.
+ */
+export function assignEvidenceIds(
+  form: IntakeForm,
+  segments: TranscriptSegment[],
+): IntakeForm {
+  const FIELD_KEYWORDS: Record<string, string[]> = {
+    patientName: ['patient', 'name', 'mr.', 'ms.', 'mrs.', 'dr.'],
+    dob: ['born', 'birth', 'age', 'year old', 'year-old'],
+    allergies: ['allerg', 'reaction', 'sensitive'],
+    codeStatus: ['code', 'dnr', 'full code', 'resuscitation', 'dni'],
+    reasonForAdmission: ['admit', 'chief complaint', 'presenting', 'came in for', 'reason'],
+    geoLocation: ['zip', 'address', 'location', 'neighborhood', 'lives in'],
+    relevantPMH: ['history', 'medical history', 'pmh', 'diagnosed', 'chronic', 'condition'],
+    hospitalDay: ['hospital day', 'hd #', 'pod #', 'post-op day', 'day of hospital'],
+    procedures: ['procedure', 'surgery', 'scan', 'ekg', 'ecg', 'lab', 'test performed'],
+    temp: ['temperature', 'fever', 'temp', 'degree'],
+    heartRate: ['heart rate', 'pulse', 'hr ', 'bpm', 'beats per'],
+    respiratoryRate: ['respiratory', 'breathing', 'breath', 'rr '],
+    bpSystolic: ['blood pressure', 'systolic', 'bp '],
+    bpDiastolic: ['blood pressure', 'diastolic'],
+    painLevel: ['pain', 'pain scale', 'hurts', 'ache', 'discomfort', 'pain level'],
+    additionalInfo: ['additional', 'note', 'observe', 'monitor', 'assessment'],
+    medications: ['medication', 'medicine', 'drug', 'mg', 'dose', 'prescribed', 'taking'],
+    nurseName: ['nurse', 'shift', 'my name', 'i am', "i'm"],
+  };
+
+  const updated = { ...form };
+  for (const [fieldId, keywords] of Object.entries(FIELD_KEYWORDS)) {
+    if (!keywords.length) continue;
+    const meta = form[fieldId] as FieldMetadata<any>;
+    if (!meta || meta.status === 'missing') continue;
+
+    const matchingIds = segments
+      .filter((seg) =>
+        keywords.some((kw) => seg.text.toLowerCase().includes(kw.toLowerCase()))
+      )
+      .map((seg) => seg.id);
+
+    if (matchingIds.length > 0) {
+      updated[fieldId] = { ...meta, evidenceIds: matchingIds };
+    }
+  }
+  return updated;
+}
+
+/**
  * Convert a plain-text Whisper transcript into TranscriptSegment[].
- * Speaker labels are an approximation (alternating Nurse/Patient) since
- * Whisper returns no diarization in this implementation.
+ * Speaker labels alternate Nurse/Patient since Whisper returns no diarization.
  */
 export function plainTextToSegments(text: string): TranscriptSegment[] {
   if (!text) return [];
 
-  // Split on paragraph breaks first, then single newlines.
   const chunks = text
     .split(/\n{2,}/)
     .flatMap((block) => block.split(/\n/))
