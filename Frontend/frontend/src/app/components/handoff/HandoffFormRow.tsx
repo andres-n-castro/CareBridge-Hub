@@ -1,3 +1,4 @@
+import React from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { MoreHorizontal, ExternalLink, AlertCircle } from "lucide-react";
 import { useNavigate, Link } from "react-router";
@@ -48,7 +49,7 @@ export function HandoffFormRow({ handoff }: HandoffFormRowProps) {
       )}
       onClick={() => navigate(`/sessions/${handoff.id}/review`)}
     >
-      <TableCell className="font-medium">
+      <TableCell className="font-medium pl-4">
         <div className="flex flex-col">
           <Link 
             to={`/sessions/${handoff.id}/review`} 
@@ -86,7 +87,7 @@ export function HandoffFormRow({ handoff }: HandoffFormRowProps) {
         </span>
       </TableCell>
       
-      <TableCell>
+      <TableCell className="pr-4">
         <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

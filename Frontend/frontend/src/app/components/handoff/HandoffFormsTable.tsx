@@ -47,15 +47,15 @@ export function HandoffFormsTable({
 
   return (
     <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm", className)}>
-      <Table>
+      <Table className="table-fixed">
         <TableHeader className="bg-muted sticky top-0 z-10 shadow-sm">
           <TableRow>
-            <TableHead className="w-[200px]">Patient / Room</TableHead>
-            <TableHead className="w-[150px]">Shift / Date</TableHead>
-            <TableHead className="w-[120px]">Status</TableHead>
-            <TableHead className="w-[180px]">Attention</TableHead>
-            <TableHead className="w-[150px]">Last Updated</TableHead>
-            <TableHead className="w-[100px] text-right">Actions</TableHead>
+            <TableHead className="w-[17%] pl-4">Patient / Room</TableHead>
+            <TableHead className="w-[17%]">Shift / Date</TableHead>
+            <TableHead className="w-[17%]">Status</TableHead>
+            <TableHead className="w-[17%]">Attention</TableHead>
+            <TableHead className="w-[17%]">Last Updated</TableHead>
+            <TableHead className="w-[15%] text-right pr-4">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

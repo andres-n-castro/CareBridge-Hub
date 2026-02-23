@@ -88,6 +88,9 @@ interface BackendSessionRow {
   updated_at: string;
   status: string;
   progress: number;
+  missing: number;
+  uncertain: number;
+  follow_ups: number;
 }
 
 interface BackendStatus {
@@ -198,6 +201,11 @@ export async function finalizeSession(
   return request(`/sessions/${sessionId}/finalize`, { method: 'POST' });
 }
 
+/** Permanently delete a session. */
+export async function deleteSession(sessionId: number): Promise<void> {
+  await fetch(`${BASE_URL}/sessions/${sessionId}`, { method: 'DELETE' });
+}
+
 /** Fetch SVI metrics and follow-up questions for a session. */
 export async function getSVI(sessionId: number): Promise<SVIResponse> {
   return request<SVIResponse>(`/sessions/${sessionId}/svi`);
@@ -249,7 +257,7 @@ export function backendSessionToFrontend(row: BackendSessionRow): Session {
     id,
     patientId: `PT-${displayId}`,
     maskedPatientId: `PT-•••${id.slice(-4)}`,
-    createdAt: row.updated_at,
+    createdAt: row.created_at,
     status: backendStatusToFrontend(row.status),
     lastUpdated: formatRelativeTime(row.updated_at),
     owner: '',
@@ -272,9 +280,11 @@ export function backendSessionToHandoffForm(row: BackendSessionRow): HandoffForm
     roomNumber: row.room_num != null ? String(row.room_num) : '—',
     createdAt: row.created_at ?? row.updated_at,
     status: backendStatusToHandoffStatus(row.status),
-    // Per-field attention stats are not available in the list endpoint.
-    // They would require loading each form individually — too expensive for a list.
-    attention: { missing: 0, uncertain: 0, followUps: 0 },
+    attention: {
+      missing: row.missing ?? 0,
+      uncertain: row.uncertain ?? 0,
+      followUps: row.follow_ups ?? 0,
+    },
     lastUpdated: row.updated_at,
   };
 }
@@ -426,8 +436,18 @@ export function rawExtractedFormToIntakeForm(rawForm: Record<string, unknown>): 
     bpDiastolic: ai(vs.bp_diastolic != null ? String(vs.bp_diastolic) : '', true),
     painLevel: ai(ca.pain_level_0_10 != null ? String(ca.pain_level_0_10) : '', true),
     additionalInfo: ai(ca.additional_info ?? '', false),
-    // Medications are not extracted by the LLM; nurses add them manually.
-    medications: makeField([], false),
+    medications: ai(
+      ((rawForm.medications as Array<{ name: string; dose: string | null; frequency: string | null }> | null) ?? [])
+        .filter((m) => m && m.name)
+        .map((m, i) => ({
+          id: `ai-med-${i}`,
+          name: m.name ?? '',
+          dose: m.dose ?? '',
+          frequency: m.frequency ?? '',
+          source: 'AI' as const,
+        })),
+      false,
+    ),
     nurseName: ai(nurseOnShift, true),
   };
 }

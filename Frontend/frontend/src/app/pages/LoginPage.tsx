@@ -92,7 +92,7 @@ export default function LoginPage() {
 
           {/* Brand Header */}
           <div className="mb-8 text-center">
-            <h1 className="mb-2 text-2xl font-semibold tracking-tight">Nurse Intake Copilot</h1>
+            <h1 className="mb-2 text-2xl font-semibold tracking-tight">Shift Hero</h1>
             <p className="text-muted-foreground">
               Secure access for clinical staff
             </p>

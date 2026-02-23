@@ -29,9 +29,10 @@ import { useNavigate } from "react-router";
 
 interface SessionsTableProps {
   sessions: Session[];
+  onDelete?: (id: string) => void;
 }
 
-export function SessionsTable({ sessions }: SessionsTableProps) {
+export function SessionsTable({ sessions, onDelete }: SessionsTableProps) {
   const navigate = useNavigate();
 
   if (sessions.length === 0) {
@@ -51,15 +52,14 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
 
   return (
     <div className="rounded-md border bg-card shadow-sm overflow-hidden">
-      <Table>
+      <Table className="table-fixed">
         <TableHeader className="bg-muted/30">
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-[200px]">Patient</TableHead>
-            <TableHead>Created</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Last updated</TableHead>
-            <TableHead>Owner</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead className="w-[21%] pl-4">Patient</TableHead>
+            <TableHead className="w-[21%]">Created</TableHead>
+            <TableHead className="w-[21%]">Status</TableHead>
+            <TableHead className="w-[21%]">Last updated</TableHead>
+            <TableHead className="w-[16%] text-right pr-4">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -68,7 +68,7 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
               key={session.id} 
               className="cursor-pointer hover:bg-muted/30 group"
             >
-              <TableCell className="font-medium">
+              <TableCell className="font-medium pl-4">
                 <div className="flex flex-col">
                   <span className="text-foreground font-semibold tracking-tight">{session.maskedPatientId}</span>
                   <span className="text-xs text-muted-foreground font-normal">Session: {session.id}</span>
@@ -86,13 +86,8 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
                 <StatusBadge status={session.status} />
               </TableCell>
               <TableCell className="text-muted-foreground text-sm">{session.lastUpdated}</TableCell>
-              <TableCell>
-                <div className="h-7 w-7 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center text-xs font-medium border border-blue-100 ring-1 ring-blue-50">
-                  {session.owner}
-                </div>
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+              <TableCell className="text-right pr-4">
+                <div className="flex items-center justify-end gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -124,7 +119,10 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
                         <FileDown className="mr-2 h-4 w-4" /> Export
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive focus:text-destructive">
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => onDelete?.(session.id)}
+                      >
                         <Trash className="mr-2 h-4 w-4" /> Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
