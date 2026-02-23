@@ -2,7 +2,7 @@ import importlib.util
 import logging
 import os
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
@@ -128,10 +128,15 @@ def _svi_flags_to_questions(flags: dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 @router.get("/{session_id}/svi")
-async def get_svi(session_id: int, db: AsyncSession = Depends(get_db)):
+async def get_svi(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    location_override: str | None = Query(default=None, alias="location"),
+):
     """
     Return Social Vulnerability Index metrics and follow-up questions for a
-    session. Resolves location via two strategies in priority order:
+    session. Resolves location via three strategies in priority order:
+      0. Use the ?location= query param if provided (zip code or 'County, State').
       1. Extract ZIP from transcript and resolve county/state via external APIs.
       2. Use geo_location already stored in patient_info (set by the regular
          recording flow or by a manual nurse edit).
@@ -140,33 +145,49 @@ async def get_svi(session_id: int, db: AsyncSession = Depends(get_db)):
         logger.info("SVI lookup not available — returning empty response")
         return {"metrics": [], "questions": [], "error": "svi_unavailable"}
 
-    result = await db.execute(
-        text("SELECT transcript, patient_info FROM patients WHERE id = :id"),
-        {"id": session_id},
-    )
-    row = result.mappings().one_or_none()
-    transcript: str | None = row["transcript"] if row else None
-    patient_info: dict = (row["patient_info"] if row else None) or {}
-
     location: str | None = None
 
-    # Strategy 1: extract ZIP from transcript and resolve to county/state.
-    if transcript:
-        try:
-            zip_code = extract_zip_from_text(transcript)  # type: ignore[misc]
-            if zip_code:
-                county_info = zip_to_county(zip_code)  # type: ignore[misc]
+    # Strategy 0: explicit location override from the caller (e.g. live form edit).
+    if location_override:
+        loc = location_override.strip()
+        # If it looks like a bare ZIP code, resolve it to county/state first.
+        if loc.isdigit() and len(loc) == 5:
+            try:
+                county_info = zip_to_county(loc)  # type: ignore[misc]
                 if county_info and county_info.get("county_name") and county_info.get("state_name"):
                     location = f'{county_info["county_name"]}, {county_info["state_name"]}'
-        except Exception as exc:
-            logger.warning("SVI ZIP extraction failed for session %d: %s", session_id, exc)
+            except Exception as exc:
+                logger.warning("SVI ZIP resolution failed for override '%s': %s", loc, exc)
+        if not location and loc:
+            # Treat as "County, State" or whatever format get_info_from_cdcsvi accepts.
+            location = loc
 
-    # Strategy 2: fall back to geo_location stored in patient_info.
     if not location:
-        geo = patient_info.get("geo_location")
-        if geo and isinstance(geo, str):
-            location = geo
-            logger.info("SVI using stored geo_location for session %d: %s", session_id, location)
+        result = await db.execute(
+            text("SELECT transcript, patient_info FROM patients WHERE id = :id"),
+            {"id": session_id},
+        )
+        row = result.mappings().one_or_none()
+        transcript: str | None = row["transcript"] if row else None
+        patient_info: dict = (row["patient_info"] if row else None) or {}
+
+        # Strategy 1: extract ZIP from transcript and resolve to county/state.
+        if transcript:
+            try:
+                zip_code = extract_zip_from_text(transcript)  # type: ignore[misc]
+                if zip_code:
+                    county_info = zip_to_county(zip_code)  # type: ignore[misc]
+                    if county_info and county_info.get("county_name") and county_info.get("state_name"):
+                        location = f'{county_info["county_name"]}, {county_info["state_name"]}'
+            except Exception as exc:
+                logger.warning("SVI ZIP extraction failed for session %d: %s", session_id, exc)
+
+        # Strategy 2: fall back to geo_location stored in patient_info.
+        if not location:
+            geo = patient_info.get("geo_location")
+            if geo and isinstance(geo, str):
+                location = geo
+                logger.info("SVI using stored geo_location for session %d: %s", session_id, location)
 
     if not location:
         return {"metrics": [], "questions": [], "error": "no_location_found"}

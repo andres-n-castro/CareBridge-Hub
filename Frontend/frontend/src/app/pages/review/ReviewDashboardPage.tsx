@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router";
 import {
   ArrowLeft,
@@ -109,6 +109,45 @@ export default function ReviewDashboardPage() {
 
     load();
   }, [sessionId]);
+
+  // ── Refresh SVI when geoLocation changes ──────────────────────────────────
+  const sviDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks the geoLocation value at the time the initial load completes so
+  // we can skip re-fetching SVI for the first stable value.
+  const initialGeoRef = useRef<string | null>(null);
+  const geoLocationValue = formData?.geoLocation?.value ?? '';
+
+  // Capture the initial value once loading finishes.
+  useEffect(() => {
+    if (!loading && initialGeoRef.current === null) {
+      initialGeoRef.current = geoLocationValue;
+    }
+  }, [loading, geoLocationValue]);
+
+  useEffect(() => {
+    // Wait until initial load is done and the baseline has been recorded.
+    if (!sessionId || loading || initialGeoRef.current === null) return;
+    // Skip if this is just the initial value settling in.
+    if (geoLocationValue === initialGeoRef.current) return;
+    const loc = geoLocationValue.trim();
+    if (!loc) return;
+
+    if (sviDebounceRef.current) clearTimeout(sviDebounceRef.current);
+    sviDebounceRef.current = setTimeout(async () => {
+      try {
+        const sviData = await api.getSVI(Number(sessionId), loc);
+        if (sviData.metrics.length > 0) setSviMetrics(sviData.metrics);
+        if (sviData.questions.length > 0) setQuestions(sviData.questions);
+      } catch {
+        // Silently ignore — existing SVI data stays in place.
+      }
+    }, 800);
+
+    return () => {
+      if (sviDebounceRef.current) clearTimeout(sviDebounceRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geoLocationValue]);
 
   // ── Derived state ──────────────────────────────────────────────────────────
   const requiredFieldsComplete = formData

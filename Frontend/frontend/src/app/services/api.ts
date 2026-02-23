@@ -206,9 +206,13 @@ export async function deleteSession(sessionId: number): Promise<void> {
   await fetch(`${BASE_URL}/sessions/${sessionId}`, { method: 'DELETE' });
 }
 
-/** Fetch SVI metrics and follow-up questions for a session. */
-export async function getSVI(sessionId: number): Promise<SVIResponse> {
-  return request<SVIResponse>(`/sessions/${sessionId}/svi`);
+/** Fetch SVI metrics and follow-up questions for a session.
+ *  Pass `location` to override the server-side location resolution (e.g. when
+ *  the nurse edits the Geo Location field without saving first). Accepts a
+ *  5-digit ZIP code or a "County, State" string. */
+export async function getSVI(sessionId: number, location?: string): Promise<SVIResponse> {
+  const qs = location ? `?location=${encodeURIComponent(location)}` : '';
+  return request<SVIResponse>(`/sessions/${sessionId}/svi${qs}`);
 }
 
 /** Fetch the persisted transcript for a session (DB-backed). */

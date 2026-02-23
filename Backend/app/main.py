@@ -1,4 +1,5 @@
 import logging
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -20,9 +21,14 @@ app.include_router(sessions_router)
 app.include_router(svi_router)
 app.include_router(media_router)
 
+# ALLOWED_ORIGIN can be set to your Vercel URL in production (e.g. https://your-app.vercel.app).
+# Defaults to "*" for local development.
+_raw_origin = os.getenv("ALLOWED_ORIGIN", "*")
+_allowed_origins = [o.strip() for o in _raw_origin.split(",")] if _raw_origin != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: carebridge-api
+    env: docker
+    dockerfilePath: ./Backend/Dockerfile
+    dockerContext: ./Backend
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGIN
+        sync: false
+      - key: NURSE_EMAIL
+        sync: false
+      - key: NURSE_PASSWORD
+        sync: false
+      - key: NURSE_NAME
+        sync: false
